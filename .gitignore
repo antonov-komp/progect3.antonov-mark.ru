@@ -2,7 +2,7 @@
 /logs/
 /logs-apps/
 /app/logs/
-/app/config/app-access.php
+/app/config/
 
 # Sensitive app settings
 /app/settings.php
@@ -18,3 +18,4 @@
 # Frontend dependencies
 /frontend/node_modules/
 /frontend/.npm-cache/
+/tmp/
