@@ -70,11 +70,11 @@ const currentDepartmentIds = computed(() =>
 );
 
 const hasModuleAccess = (moduleItem) => {
-  if (isSuperAdmin.value) {
-    return true;
-  }
   if (!moduleItem.enabled) {
     return false;
+  }
+  if (isSuperAdmin.value) {
+    return true;
   }
 
   const allowedUsers = Array.isArray(moduleItem.allowed_users)

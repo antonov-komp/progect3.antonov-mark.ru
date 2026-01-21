@@ -124,13 +124,23 @@ class AccessModulesService
             return null;
         }
 
+        $enabled = $this->normalizeBool($module['enabled'] ?? true);
+        if (isset($module['mode'])) {
+            $mode = $this->normalizeString($module['mode'] ?? '');
+            if ($mode === 'active') {
+                $enabled = true;
+            } elseif ($mode === 'inactive') {
+                $enabled = false;
+            }
+        }
+
         return [
             'key' => $key,
             'title' => $this->normalizeString($module['title'] ?? ''),
             'subtitle' => $this->normalizeString($module['subtitle'] ?? ''),
             'icon' => $this->normalizeString($module['icon'] ?? ''),
             'route' => $this->normalizeString($module['route'] ?? ''),
-            'enabled' => $this->normalizeBool($module['enabled'] ?? true),
+            'enabled' => $enabled,
             'allowed_users' => $this->normalizeIdList($module['allowed_users'] ?? []),
             'allowed_departments' => $this->normalizeIdList($module['allowed_departments'] ?? []),
         ];
