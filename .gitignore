@@ -1,0 +1,20 @@
+# Logs (global and app-local)
+/logs/
+/logs-apps/
+/app/logs/
+/app/config/app-access.php
+
+# Sensitive app settings
+/app/settings.php
+/app/settings.json
+
+# Outgoing webhook local config
+/outgoing-webhook/config.local.php
+
+# Outgoing webhook runtime files
+/outgoing-webhook/logs/
+/outgoing-webhook/queue/
+
+# Frontend dependencies
+/frontend/node_modules/
+/frontend/.npm-cache/

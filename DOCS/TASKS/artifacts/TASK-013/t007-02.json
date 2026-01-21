@@ -1,0 +1,1 @@
+{"allowed":false,"deny_message":"Приложение закрыто для входа Администратором","greeting":"","context_message":"","access":{"context":"direct","is_embedded":false,"mode":"deny_all","decision":"deny","reason":"config_error"},"auth":{"source":"app_token"},"user":{"name":"","last_name":"","is_admin":null,"department":""},"status":"ok","error_message":""}

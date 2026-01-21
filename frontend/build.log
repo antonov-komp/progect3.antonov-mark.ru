@@ -1,0 +1,14 @@
+
+> custom-inline-webhook-frontend@1.0.0 build
+> vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 31 modules transformed.
+rendering chunks...
+✗ Build failed in 1.09s
+error during build:
+EACCES: permission denied, open '/var/www/custom-inline-webhook.antonov-mark.ru/public/vue/app.js'
+    at async open (node:internal/fs/promises:639:25)
+    at async writeFile (node:internal/fs/promises:1216:14)
+    at async Queue.work (file:///var/www/custom-inline-webhook.antonov-mark.ru/frontend/node_modules/rollup/dist/es/shared/node-entry.js:22681:32)
