@@ -82,3 +82,40 @@ export async function fetchAccessDirectory(signal) {
 
   return parseJsonResponse(response);
 }
+
+export async function fetchAccessModulesConfig(signal) {
+  const url = new URL('/api/access-modules.php', window.location.origin);
+  const context = await getRequestContext();
+  appendQueryParams(url, context);
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: DEFAULT_HEADERS,
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return parseJsonResponse(response);
+}
+
+export async function updateAccessModulesConfig(payload, signal) {
+  const url = new URL('/api/access-modules.php', window.location.origin);
+  const context = await getRequestContext();
+  appendQueryParams(url, context);
+
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return parseJsonResponse(response);
+}

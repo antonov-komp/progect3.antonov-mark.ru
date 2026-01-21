@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import AppView from '@/views/AppView.vue';
+import { router } from '@/router';
 import { initBitrixSdk } from '@/bootstrap/bitrixSdk';
 import { resolveRequestContext } from '@/bootstrap/context';
 import { renderFallback } from '@/bootstrap/renderFallback';
@@ -8,6 +9,7 @@ import { renderFallback } from '@/bootstrap/renderFallback';
 const mountVueApp = (root) => {
   const app = createApp(AppView);
   app.use(createPinia());
+  app.use(router);
   app.mount(root);
 };
 

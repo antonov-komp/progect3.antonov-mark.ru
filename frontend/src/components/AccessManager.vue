@@ -77,6 +77,18 @@
           {{ selectedDepartmentNames.join(', ') }}
         </div>
       </div>
+
+      <div class="access-manager__modules">
+        <div class="access-manager__block-title">Доступ к модулям</div>
+        <button
+          class="access-manager__modules-toggle"
+          type="button"
+          @click="showModulesManager = !showModulesManager"
+        >
+          {{ showModulesManager ? 'Скрыть настройки' : 'Открыть настройки' }}
+        </button>
+        <AccessModulesManager v-if="showModulesManager" />
+      </div>
     </div>
   </section>
 </template>
@@ -89,6 +101,7 @@ import {
   updateAccessConfig,
 } from '@/services/accessConfigService';
 import { notifyError, notifySuccess } from '@/services/notifications';
+import AccessModulesManager from '@/components/AccessModulesManager.vue';
 
 const emit = defineEmits(['close']);
 
@@ -110,6 +123,7 @@ const denyDirect = ref(false);
 const saveTimer = ref(null);
 const controller = ref(null);
 const ready = ref(false);
+const showModulesManager = ref(false);
 
 const selectedUserNames = computed(() => {
   const map = new Map(users.value.map((user) => [user.id, user.full_name]));
