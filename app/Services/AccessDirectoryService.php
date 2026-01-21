@@ -3,6 +3,7 @@
 class AccessDirectoryService
 {
     private const CACHE_TTL = 3600;
+    private const MAX_BATCHES = 200;
 
     private AccessContextService $accessContextService;
     private Bitrix24Client $bitrix24Client;
@@ -36,16 +37,16 @@ class AccessDirectoryService
             ];
         }
 
-        $result = $this->callBitrix('user.get', [
+        $rawUsers = $this->fetchAllPages('user.get', [
             'FILTER' => ['ACTIVE' => 'Y'],
             'SELECT' => ['ID', 'NAME', 'LAST_NAME'],
-        ]);
+        ], 'users');
 
-        if (!empty($result['error'])) {
+        if ($rawUsers['status'] === 'error') {
             $this->logger->log('access-directory', [
                 'status' => 'error',
                 'message' => 'user.get failed',
-                'error' => $result['error'] ?? '',
+                'error' => $rawUsers['error'] ?? '',
             ]);
 
             return [
@@ -56,7 +57,7 @@ class AccessDirectoryService
         }
 
         $items = [];
-        foreach ($result['result'] ?? [] as $user) {
+        foreach ($rawUsers['items'] as $user) {
             if (!is_array($user)) {
                 continue;
             }
@@ -102,13 +103,13 @@ class AccessDirectoryService
             ];
         }
 
-        $result = $this->callBitrix('department.get');
+        $rawDepartments = $this->fetchAllPages('department.get', [], 'departments');
 
-        if (!empty($result['error'])) {
+        if ($rawDepartments['status'] === 'error') {
             $this->logger->log('access-directory', [
                 'status' => 'error',
                 'message' => 'department.get failed',
-                'error' => $result['error'] ?? '',
+                'error' => $rawDepartments['error'] ?? '',
             ]);
 
             return [
@@ -119,7 +120,7 @@ class AccessDirectoryService
         }
 
         $items = [];
-        foreach ($result['result'] ?? [] as $department) {
+        foreach ($rawDepartments['items'] as $department) {
             if (!is_array($department)) {
                 continue;
             }
@@ -147,6 +148,78 @@ class AccessDirectoryService
     {
         $authContext = $this->accessContextService->getAuthContext();
         return $this->bitrix24Client->call($method, $params, $authContext);
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     * @return array{status:string,message:string,items:array,error:string}
+     */
+    private function fetchAllPages(string $method, array $params, string $label): array
+    {
+        $items = [];
+        $start = 0;
+        $iterations = 0;
+
+        while (true) {
+            $batchParams = $params;
+            $batchParams['START'] = $start;
+            $result = $this->callBitrix($method, $batchParams);
+
+            if (!empty($result['error'])) {
+                return [
+                    'status' => 'error',
+                    'message' => 'bitrix_error',
+                    'items' => [],
+                    'error' => (string) ($result['error'] ?? ''),
+                ];
+            }
+
+            $batch = $result['result'] ?? [];
+            if (is_array($batch)) {
+                $items = array_merge($items, $batch);
+            }
+
+            $next = isset($result['next']) && is_numeric($result['next']) ? (int) $result['next'] : null;
+            if ($next === null) {
+                break;
+            }
+
+            if ($next <= $start) {
+                $this->logger->log('access-directory', [
+                    'status' => 'error',
+                    'message' => 'invalid pagination cursor',
+                    'label' => $label,
+                    'next' => $next,
+                    'start' => $start,
+                ]);
+                break;
+            }
+
+            $start = $next;
+            $iterations++;
+            if ($iterations >= self::MAX_BATCHES) {
+                $this->logger->log('access-directory', [
+                    'status' => 'error',
+                    'message' => 'pagination limit reached',
+                    'label' => $label,
+                    'batches' => $iterations,
+                ]);
+
+                return [
+                    'status' => 'error',
+                    'message' => 'pagination_limit',
+                    'items' => [],
+                    'error' => 'pagination_limit',
+                ];
+            }
+        }
+
+        return [
+            'status' => 'ok',
+            'message' => '',
+            'items' => $items,
+            'error' => '',
+        ];
     }
 
     private function getCacheKey(string $prefix): string

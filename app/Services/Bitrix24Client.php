@@ -109,6 +109,8 @@ class Bitrix24Client
             'result' => $response['result'] ?? null,
             'error' => isset($response['error']) ? (string) $response['error'] : '',
             'error_information' => isset($response['error_information']) ? (string) $response['error_information'] : '',
+            'next' => isset($response['next']) && is_numeric($response['next']) ? (int) $response['next'] : null,
+            'total' => isset($response['total']) && is_numeric($response['total']) ? (int) $response['total'] : null,
         ];
 
         if ($normalized['error'] !== '') {
