@@ -24,8 +24,15 @@ class GreetingComposerService
         return 'Привет, ' . $fullName . '!';
     }
 
-    public function buildContextMessage(?bool $isAdmin, bool $isEmbedded, string $departmentName): string
+    public function buildContextMessage(?bool $isAdmin, bool $isEmbedded, string $departmentName, string $tokenOwnerName = ''): string
     {
+        if (!$isEmbedded && $tokenOwnerName !== '') {
+            $departmentLabel = $departmentName !== '' ? $departmentName : 'не указан';
+            return 'Владелец токена: ' . $tokenOwnerName . '; ' .
+                'контекст: по прямой ссылке; ' .
+                'отдел: ' . $departmentLabel . '.';
+        }
+
         $adminLabel = 'неизвестно';
         if ($isAdmin === true) {
             $adminLabel = 'да';

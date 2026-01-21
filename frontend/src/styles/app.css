@@ -335,6 +335,10 @@ body {
   color: var(--b24-text-muted);
 }
 
+.module-tiles__notice {
+  font-size: 13px;
+}
+
 .module-tile {
   display: flex;
   align-items: center;

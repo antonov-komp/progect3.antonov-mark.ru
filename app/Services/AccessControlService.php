@@ -36,11 +36,11 @@ class AccessControlService
         $userLastName = isset($user['last_name']) ? (string) $user['last_name'] : '';
         $departmentIds = isset($user['department_ids']) && is_array($user['department_ids']) ? $user['department_ids'] : [];
         $superAdminId = (string) ($config['super_admin_id'] ?? '');
+        $superAdminProfile = $this->profileService->fetchUserById($superAdminId);
         $denyDirect = $config['deny_direct'] ?? false;
         $isDirectContext = $accessContext === 'direct' || $accessContext === 'unknown';
 
         $isSuperAdmin = $userId !== '' && $superAdminId !== '' && $userId === $superAdminId;
-        $denyMessage = $this->resolveDenyMessage($superAdminId);
 
         $decision = 'deny';
         $reason = 'unknown';
@@ -48,15 +48,15 @@ class AccessControlService
         if ($configError) {
             $decision = 'deny';
             $reason = 'config_error';
-        } elseif ($isDirectContext) {
-            $decision = $denyDirect === true ? 'deny' : 'allow';
-            $reason = $denyDirect === true ? 'deny_direct' : 'direct_allowed';
         } elseif ($isSuperAdmin) {
             $decision = 'allow';
             $reason = 'super_admin';
         } elseif ($config['global_enabled'] === false) {
             $decision = 'deny';
             $reason = 'global_disabled';
+        } elseif ($isDirectContext) {
+            $decision = $denyDirect === true ? 'deny' : 'allow';
+            $reason = $denyDirect === true ? 'deny_direct' : 'direct_allowed';
         } elseif ($this->isAllowedUser($userId, $config['allowed_users']) || $this->isAllowedDepartment($departmentIds, $config['allowed_departments'])) {
             $decision = 'allow';
             $reason = 'allowed_list';
@@ -65,7 +65,12 @@ class AccessControlService
             $reason = 'not_allowed';
         }
 
+        if ($isDirectContext && $reason === 'direct_allowed' && $superAdminId !== '') {
+            $isSuperAdmin = true;
+        }
+
         $isAllowed = $decision === 'allow';
+        $denyMessage = $isAllowed ? '' : $this->resolveDenyMessage($reason, $superAdminId);
 
         if (!$isAllowed) {
             $this->logAccessDecision(
@@ -89,6 +94,7 @@ class AccessControlService
             'context' => $accessContext,
             'is_embedded' => $isEmbedded,
             'is_super_admin' => $isSuperAdmin,
+            'super_admin' => $superAdminProfile,
         ];
     }
 
@@ -162,19 +168,35 @@ class AccessControlService
         return false;
     }
 
-    private function resolveDenyMessage(string $superAdminId): string
+    private function resolveDenyMessage(string $reason, string $superAdminId): string
     {
-        if ($superAdminId === '') {
-            return 'Супер Админ закрыл доступ в приложение.';
+        if ($reason === 'config_error') {
+            return 'Ошибка конфигурации доступа.';
         }
 
-        $superAdmin = $this->profileService->fetchUserById($superAdminId);
-        $fullName = trim($superAdmin['full_name'] ?? '');
-        if ($fullName === '') {
-            $fullName = 'ID ' . $superAdminId;
+        if ($reason === 'deny_direct') {
+            return 'Прямой доступ запрещен.';
         }
 
-        return 'Супер Админ ' . $fullName . ' закрыл доступ в приложение.';
+        if ($reason === 'not_allowed') {
+            return 'Нет прав на доступ к приложению.';
+        }
+
+        if ($reason === 'global_disabled') {
+            if ($superAdminId === '') {
+                return 'Доступ к приложению временно закрыт.';
+            }
+
+            $superAdmin = $this->profileService->fetchUserById($superAdminId);
+            $fullName = trim($superAdmin['full_name'] ?? '');
+            if ($fullName === '') {
+                $fullName = 'ID ' . $superAdminId;
+            }
+
+            return 'Супер Админ ' . $fullName . ' закрыл доступ в приложение.';
+        }
+
+        return 'Доступ ограничен.';
     }
 
     private function maskId(string $value): string

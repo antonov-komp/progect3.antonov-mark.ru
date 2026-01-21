@@ -7,7 +7,11 @@
       </div>
     </div>
 
-    <LoadingState v-if="modulesLoading" />
+    <div v-if="showDirectNotice" class="module-tiles__notice b24-alert b24-alert-warning">
+      Модули доступны только внутри Bitrix24, где определяется пользователь.
+    </div>
+
+    <LoadingState v-else-if="modulesLoading" />
 
     <ErrorState v-else-if="modulesError" :message="modulesError" />
 
@@ -47,8 +51,13 @@ const router = useRouter();
 const store = useUiStateStore();
 const { state, modulesConfig, modulesLoading, modulesError } = storeToRefs(store);
 
+const hasUserIdentity = computed(() => String(state.value.user.id || '') !== '');
+const showDirectNotice = computed(() => !hasUserIdentity.value);
+
 onMounted(() => {
-  store.loadModulesAccess();
+  if (!showDirectNotice.value) {
+    store.loadModulesAccess();
+  }
 });
 
 const isSuperAdmin = computed(() => state.value.access.is_super_admin === true);

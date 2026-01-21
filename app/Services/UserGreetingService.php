@@ -52,13 +52,67 @@ class UserGreetingService
         $authSource = $authContext['auth_id'] !== '' ? 'request_token' : 'app_token';
         $authDomain = $authContext['domain'];
 
-        $profile = $this->profileService->fetchProfile();
-        $status = $profile['status'];
-        $message = $profile['message'];
-        $user = $profile['user'];
+        $tokenOwnerName = '';
+        $tokenOwnerProfile = null;
+        if (isset($accessData['super_admin']) && is_array($accessData['super_admin'])) {
+            $tokenOwnerId = trim((string) ($accessData['super_admin']['id'] ?? ''));
+            if ($tokenOwnerId !== '') {
+                $tokenOwnerProfile = $this->profileService->fetchUserProfileById($tokenOwnerId);
+                if (is_array($tokenOwnerProfile)) {
+                    $tokenOwnerName = trim(
+                        (string) ($tokenOwnerProfile['name'] ?? '') . ' ' . (string) ($tokenOwnerProfile['last_name'] ?? '')
+                    );
+                }
+            }
+
+            if ($tokenOwnerName === '') {
+                $tokenOwnerName = trim((string) ($accessData['super_admin']['full_name'] ?? ''));
+            }
+            if ($tokenOwnerName === '') {
+                if ($tokenOwnerId !== '') {
+                    $tokenOwnerName = 'ID ' . $tokenOwnerId;
+                }
+            }
+        }
+
+        if (!$isEmbedded && $authContext['auth_id'] === '') {
+            $status = 'ok';
+            $message = '';
+            if (is_array($tokenOwnerProfile) && ($tokenOwnerProfile['id'] ?? '') !== '') {
+                $user = [
+                    'id' => $tokenOwnerProfile['id'],
+                    'name' => $tokenOwnerProfile['name'] ?? '',
+                    'last_name' => $tokenOwnerProfile['last_name'] ?? '',
+                    'is_admin' => $tokenOwnerProfile['is_admin'] ?? null,
+                    'admin_source' => 'token_owner',
+                    'department' => $tokenOwnerProfile['department'] ?? '',
+                    'department_ids' => $tokenOwnerProfile['department_ids'] ?? [],
+                ];
+            } else {
+                $user = [
+                    'id' => '',
+                    'name' => '',
+                    'last_name' => '',
+                    'is_admin' => null,
+                    'admin_source' => 'direct',
+                    'department' => '',
+                    'department_ids' => [],
+                ];
+            }
+        } else {
+            $profile = $this->profileService->fetchProfile();
+            $status = $profile['status'];
+            $message = $profile['message'];
+            $user = $profile['user'];
+        }
 
         $greeting = $this->composerService->buildGreeting($user['name'], $user['last_name'], $status);
-        $contextMessage = $this->composerService->buildContextMessage($user['is_admin'], $isEmbedded, $user['department']);
+        $contextMessage = $this->composerService->buildContextMessage(
+            $user['is_admin'],
+            $isEmbedded,
+            $user['department'],
+            $tokenOwnerName
+        );
         $fullMessage = $greeting;
         if ($contextMessage !== '') {
             $fullMessage .= ' ' . $contextMessage;
@@ -102,6 +156,7 @@ class UserGreetingService
                 'is_admin' => $user['is_admin'],
                 'admin_source' => $user['admin_source'],
                 'department' => $user['department'],
+                'department_ids' => $user['department_ids'] ?? [],
             ],
             'access' => [
                 'context' => $accessContext,

@@ -125,6 +125,65 @@ class BitrixUserProfileService
         ];
     }
 
+    /**
+     * @return array{id:string,name:string,last_name:string,is_admin:?bool,department:string,department_ids:array<int,string>}
+     */
+    public function fetchUserProfileById(string $userId): array
+    {
+        $userId = trim($userId);
+        if ($userId === '') {
+            return [
+                'id' => '',
+                'name' => '',
+                'last_name' => '',
+                'is_admin' => null,
+                'department' => '',
+                'department_ids' => [],
+            ];
+        }
+
+        // Используется метод Bitrix24: user.get
+        // Документация: https://context7.com/bitrix24/rest/user.get
+        $result = $this->callBitrix('user.get', [
+            'FILTER' => ['ID' => $userId],
+            'SELECT' => ['ID', 'NAME', 'LAST_NAME', 'UF_DEPARTMENT', 'IS_ADMIN', 'ADMIN'],
+        ]);
+
+        if (!empty($result['error'])) {
+            return [
+                'id' => $userId,
+                'name' => '',
+                'last_name' => '',
+                'is_admin' => null,
+                'department' => '',
+                'department_ids' => [],
+            ];
+        }
+
+        $userList = $result['result'] ?? [];
+        $user = is_array($userList) && isset($userList[0]) ? $userList[0] : [];
+        $name = isset($user['NAME']) ? (string) $user['NAME'] : '';
+        $lastName = isset($user['LAST_NAME']) ? (string) $user['LAST_NAME'] : '';
+
+        $departmentIds = [];
+        if (!empty($user['UF_DEPARTMENT']) && is_array($user['UF_DEPARTMENT'])) {
+            foreach ($user['UF_DEPARTMENT'] as $departmentId) {
+                $departmentIds[] = (string) $departmentId;
+            }
+        }
+
+        $departmentName = $this->resolveDepartmentName($departmentIds);
+
+        return [
+            'id' => $userId,
+            'name' => $name,
+            'last_name' => $lastName,
+            'is_admin' => $this->resolveAdminStatus($user),
+            'department' => $departmentName,
+            'department_ids' => $departmentIds,
+        ];
+    }
+
     private function resolveAdminStatus(array $user): ?bool
     {
         if (isset($user['IS_ADMIN'])) {
