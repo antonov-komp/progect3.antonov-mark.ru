@@ -288,4 +288,39 @@ class TaskDetailsService
         $path = $this->basePath . '/logs/activity-first.log';
         $this->filesystem->appendLine($path, json_encode($entry, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
     }
+
+    /**
+     * Маркировка события как синхронно обработанного
+     * 
+     * @param string $requestId ID запроса
+     * @param string $taskId ID задачи
+     */
+    public function markActivityFirstProcessed(string $requestId, string $taskId): void
+    {
+        $stateDir = $this->basePath . '/state/activity-first-processed';
+        $this->filesystem->ensureDir($stateDir);
+        
+        $stateFile = $stateDir . '/' . $requestId . '_' . $taskId . '.json';
+        $state = [
+            'requestId' => $requestId,
+            'taskId' => $taskId,
+            'processedAt' => $this->request->now(),
+            'sync' => true,
+        ];
+        
+        $this->filesystem->writeJson($stateFile, $state);
+    }
+
+    /**
+     * Проверка, было ли событие уже обработано синхронно
+     * 
+     * @param string $requestId ID запроса
+     * @param string $taskId ID задачи
+     * @return bool
+     */
+    public function isActivityFirstProcessed(string $requestId, string $taskId): bool
+    {
+        $stateFile = $this->basePath . '/state/activity-first-processed/' . $requestId . '_' . $taskId . '.json';
+        return file_exists($stateFile);
+    }
 }

@@ -421,3 +421,199 @@ function outgoingWebhookJsonResponse(int $statusCode, array $payload): void
 {
     outgoingWebhookService('request')->jsonResponse($statusCode, $payload);
 }
+
+/**
+ * Получение сервисов для синхронной обработки ActivityFirst
+ * 
+ * @return array Массив сервисов
+ */
+function outgoingWebhookGetSyncServices(): array
+{
+    static $services = null;
+    if ($services !== null) {
+        return $services;
+    }
+
+    require_once __DIR__ . '/../app/crest.php';
+    require_once __DIR__ . '/../app/Services/Bitrix24Client.php';
+    require_once __DIR__ . '/services/bootstrap.php';
+
+    $config = new ConfigService();
+    $filesystem = new FilesystemService();
+    $request = new RequestService($config);
+    $formatter = new LogValueFormatter();
+    $errors = new ErrorService($filesystem, $request);
+    $rest = new RestService(new Bitrix24Client(), $config, $errors);
+    
+    $taskDetails = new TaskDetailsService($filesystem, $request, $formatter);
+    $taskFiles = new TaskFilesService();
+    $dealFiles = new DealFileService($filesystem, $request, $taskFiles);
+    $identity = new EntityIdentityService($request);
+    
+    $commentDetailsService = new CommentDetailsService(
+        $rest,
+        $errors,
+        $taskDetails,
+        $taskFiles,
+        $dealFiles,
+        $identity,
+        $request,
+        $formatter,
+        $filesystem,
+        $config
+    );
+
+    $services = [
+        'config' => $config,
+        'filesystem' => $filesystem,
+        'request' => $request,
+        'formatter' => $formatter,
+        'errors' => $errors,
+        'rest' => $rest,
+        'taskDetails' => $taskDetails,
+        'taskFiles' => $taskFiles,
+        'dealFiles' => $dealFiles,
+        'identity' => $identity,
+        'commentDetailsService' => $commentDetailsService,
+    ];
+
+    return $services;
+}
+
+/**
+ * Синхронная обработка ActivityFirst
+ * 
+ * Выполняется сразу после получения webhook-события (в фоне после отправки ответа)
+ * 
+ * @param array $commentDetails Детали комментария
+ * @param string $taskId ID задачи
+ * @param string $requestId ID запроса
+ * @return bool Успешность обработки
+ */
+function outgoingWebhookProcessActivityFirstSync(
+    array $commentDetails,
+    string $taskId,
+    string $requestId
+): bool {
+    // Проверка конфигурационного флага
+    $enabled = outgoingWebhookGetSetting('ACTIVITY_FIRST_SYNC_ENABLED', 'true');
+    if ($enabled !== 'true' && $enabled !== '1') {
+        return false;
+    }
+
+    if (empty($commentDetails['activityFirst'])) {
+        return false;
+    }
+
+    // Валидация данных
+    $fileIds = $commentDetails['fileIds'] ?? [];
+    $dealIds = $commentDetails['crmLinks'] ?? [];
+    if (empty($fileIds) || empty($dealIds)) {
+        outgoingWebhookLogError('ActivityFirst sync: missing required data', [
+            'requestId' => $requestId,
+            'taskId' => $taskId,
+            'fileIds' => $fileIds,
+            'dealIds' => $dealIds,
+        ]);
+        return false;
+    }
+
+    // Rate limiting
+    $rateLimit = (int) outgoingWebhookGetSetting('ACTIVITY_FIRST_SYNC_RATE_LIMIT', '5');
+    $stateDir = __DIR__ . '/state';
+    outgoingWebhookSafeMkdir($stateDir);
+    $lockFile = $stateDir . '/activity-first-sync.lock';
+    $lockHandle = fopen($lockFile, 'c+');
+    if (!$lockHandle) {
+        outgoingWebhookLogError('ActivityFirst sync: cannot create lock file', [
+            'requestId' => $requestId,
+            'taskId' => $taskId,
+        ]);
+        return false;
+    }
+
+    if (!flock($lockHandle, LOCK_EX | LOCK_NB)) {
+        fclose($lockHandle);
+        outgoingWebhookLogError('ActivityFirst sync: rate limit exceeded', [
+            'requestId' => $requestId,
+            'taskId' => $taskId,
+        ]);
+        return false;
+    }
+
+    $startTime = microtime(true);
+
+    try {
+        $services = outgoingWebhookGetSyncServices();
+        $restCall = fn(string $method, array $params = []) => $services['rest']->call($method, $params);
+        
+        $result = $services['commentDetailsService']->processActivityFirst(
+            $commentDetails,
+            $taskId,
+            $restCall
+        );
+
+        $durationMs = (int) ((microtime(true) - $startTime) * 1000);
+
+        // Маркировать как обработанное
+        $services['taskDetails']->markActivityFirstProcessed($requestId, $taskId);
+
+        // Логирование результата
+        $services['taskDetails']->logActivityFirst([
+            'loggedAt' => $services['request']->now(),
+            'requestId' => $requestId,
+            'taskId' => $taskId,
+            'sync' => true,
+            'dealIds' => $result['dealIds'],
+            'fileIds' => $result['fileIds'],
+            'taskAttach' => $result['taskAttach'],
+            'dealUpdates' => $result['dealUpdates'],
+        ]);
+
+        // Логирование метрик
+        $metricsPath = __DIR__ . '/logs/activity-first-metrics.log';
+        $metrics = [
+            'loggedAt' => $services['request']->now(),
+            'requestId' => $requestId,
+            'taskId' => $taskId,
+            'sync' => true,
+            'durationMs' => $durationMs,
+            'success' => true,
+            'filesCount' => count($result['fileIds']),
+            'dealsCount' => count($result['dealIds']),
+            'rateLimitHit' => false,
+        ];
+        $services['filesystem']->appendLine($metricsPath, json_encode($metrics, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+
+        flock($lockHandle, LOCK_UN);
+        fclose($lockHandle);
+        return true;
+    } catch (Throwable $e) {
+        $durationMs = (int) ((microtime(true) - $startTime) * 1000);
+        
+        outgoingWebhookLogError('ActivityFirst sync processing failed', [
+            'requestId' => $requestId,
+            'taskId' => $taskId,
+            'message' => $e->getMessage(),
+            'durationMs' => $durationMs,
+        ]);
+
+        // Логирование метрик ошибки
+        $services = outgoingWebhookGetSyncServices();
+        $metricsPath = __DIR__ . '/logs/activity-first-metrics.log';
+        $metrics = [
+            'loggedAt' => $services['request']->now(),
+            'requestId' => $requestId,
+            'taskId' => $taskId,
+            'sync' => true,
+            'durationMs' => $durationMs,
+            'success' => false,
+            'error' => $e->getMessage(),
+        ];
+        $services['filesystem']->appendLine($metricsPath, json_encode($metrics, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+
+        flock($lockHandle, LOCK_UN);
+        fclose($lockHandle);
+        return false;
+    }
+}

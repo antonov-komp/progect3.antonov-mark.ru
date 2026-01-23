@@ -160,6 +160,7 @@ if ($entityId !== null && $eventType === 'ONTASKCOMMENTADD') {
         $commentData = null;
         $commentSource = null;
         $taskData = null;
+        $details = null;
         try {
             require_once __DIR__ . '/../app/crest.php';
             require_once __DIR__ . '/../app/Services/Bitrix24Client.php';
@@ -200,7 +201,7 @@ if ($entityId !== null && $eventType === 'ONTASKCOMMENTADD') {
                             if (is_array($chatFetch['data'])) {
                                 $commentData = $chatFetch['data'];
                                 $commentSource = $chatFetch['method'];
-                                $chatMessage = outgoingWebhookBuildCommentDetailsFromChat(
+                                $details = outgoingWebhookBuildCommentDetailsFromChat(
                                     $chatFetch['data'],
                                     $eventType,
                                     $requestId,
@@ -209,7 +210,7 @@ if ($entityId !== null && $eventType === 'ONTASKCOMMENTADD') {
                                     $chatFetch['method'],
                                     $taskData
                                 );
-                                outgoingWebhookWriteCommentDetailsRu($eventType, $chatMessage);
+                                outgoingWebhookWriteCommentDetailsRu($eventType, $details);
                                 $commentWritten = true;
                             }
                         }
@@ -247,6 +248,25 @@ if ($entityId !== null && $eventType === 'ONTASKCOMMENTADD') {
                         $requestId
                     );
                 }
+            }
+
+            // Синхронная обработка ActivityFirst (в фоне после отправки ответа)
+            if ($commentWritten && is_array($details) && !empty($details['activityFirst'])) {
+                // Отправляем ответ Bitrix24 сразу
+                outgoingWebhookJsonResponse(200, ['status' => 'ok']);
+                
+                // Выполняем синхронную обработку в фоне
+                if (function_exists('fastcgi_finish_request')) {
+                    fastcgi_finish_request();
+                    // Обработка после отправки ответа
+                    outgoingWebhookProcessActivityFirstSync($details, $entityId, $requestId);
+                } else {
+                    // Fallback: используем register_shutdown_function
+                    register_shutdown_function(function() use ($details, $entityId, $requestId) {
+                        outgoingWebhookProcessActivityFirstSync($details, $entityId, $requestId);
+                    });
+                }
+                exit;
             }
         } catch (Throwable $e) {
             outgoingWebhookLogError('Comment details exception', [

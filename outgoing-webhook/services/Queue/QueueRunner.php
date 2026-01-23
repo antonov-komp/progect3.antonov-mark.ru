@@ -113,6 +113,25 @@ class QueueRunner
             $taskData = $this->taskDetails->writeDetails($eventType, $enriched, $job['requestId'] ?? null, $entityId);
 
             if ($eventType === 'ONTASKCOMMENTADD') {
+                // Проверка, не была ли уже выполнена синхронная обработка
+                $requestId = $job['requestId'] ?? 'unknown';
+                if ($this->taskDetails->isActivityFirstProcessed($requestId, $entityId)) {
+                    // Событие уже обработано синхронно, пропускаем
+                    $this->jobState->markDone($processingJob);
+                    $this->steps->finished([
+                        'requestId' => $requestId,
+                        'eventType' => $eventType,
+                        'entityType' => $entityType,
+                        'entityId' => $entityId,
+                        'attempt' => $job['attempt'] ?? 0,
+                        'jobFile' => $processingJob->getName(),
+                        'status' => 'skipped',
+                        'reason' => 'already_processed_sync',
+                    ]);
+                    $processed++;
+                    continue;
+                }
+
                 $this->commentDetails->handleCommentAdd(
                     $eventType,
                     $raw,
