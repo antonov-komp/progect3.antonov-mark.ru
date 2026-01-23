@@ -14,6 +14,11 @@ function outgoingWebhookRestCall(string $method, array $params = []): array
     return $client->call($method, $params);
 }
 
+function outgoingWebhookCountQueue(string $dir): int
+{
+    return count(glob($dir . '/*.json') ?: []);
+}
+
 function outgoingWebhookResolveMethod(string $eventType): ?string
 {
     if (str_starts_with($eventType, 'ONCRMDEAL')) {
@@ -351,12 +356,14 @@ outgoingWebhookRecoverProcessing();
 $pendingDir = __DIR__ . '/../queue/pending';
 $processingDir = __DIR__ . '/../queue/processing';
 $doneDir = __DIR__ . '/../queue/done';
+$failedDir = __DIR__ . '/../queue/failed';
 
 $limit = (int) ($_GET['limit'] ?? 50);
 if ($limit <= 0) {
     $limit = 50;
 }
 
+$startedAt = microtime(true);
 $processed = 0;
 foreach (array_slice(glob($pendingDir . '/*.json') ?: [], 0, $limit) as $file) {
     $processingPath = $processingDir . '/' . basename($file);
@@ -404,6 +411,37 @@ foreach (array_slice(glob($pendingDir . '/*.json') ?: [], 0, $limit) as $file) {
         outgoingWebhookLogError('Failed to write enriched.json', ['path' => $enrichedPath]);
     }
 
+    $taskData = outgoingWebhookExtractTaskData($enriched);
+    if (is_array($taskData)) {
+        $details = outgoingWebhookBuildTaskDetails($taskData, $eventType, $job['requestId'] ?? null, $entityId);
+        outgoingWebhookWriteTaskDetailsRu($eventType, $details);
+    }
+
+    if ($eventType === 'ONTASKCOMMENTADD') {
+        $commentId = outgoingWebhookExtractCommentId($raw['payload'] ?? []);
+        if ($commentId !== null && $entityId !== null) {
+            $fetch = outgoingWebhookFetchCommentDetails('outgoingWebhookRestCall', $entityId, $commentId);
+            if (is_array($fetch['data'])) {
+                $details = outgoingWebhookBuildCommentDetails(
+                    $fetch['data'],
+                    $eventType,
+                    $job['requestId'] ?? null,
+                    $entityId,
+                    $commentId,
+                    $fetch['method']
+                );
+                outgoingWebhookWriteCommentDetailsRu($eventType, $details);
+            } else {
+                outgoingWebhookLogError('Comment details missing', [
+                    'requestId' => $job['requestId'] ?? 'unknown',
+                    'taskId' => $entityId,
+                    'commentId' => $commentId,
+                    'errors' => $fetch['errors'] ?? [],
+                ]);
+            }
+        }
+    }
+
     if ($entityId !== null && isset($enriched['data'][$entityType]) && is_array($enriched['data'][$entityType])) {
         outgoingWebhookDetectFieldChanges($entityType, $entityId, $enriched['data'][$entityType], $eventType);
     }
@@ -413,4 +451,14 @@ foreach (array_slice(glob($pendingDir . '/*.json') ?: [], 0, $limit) as $file) {
     $processed++;
 }
 
-outgoingWebhookJsonResponse(200, ['processed' => $processed]);
+$elapsedMs = (int) ((microtime(true) - $startedAt) * 1000);
+outgoingWebhookJsonResponse(200, [
+    'processed' => $processed,
+    'processingMs' => $elapsedMs,
+    'queue' => [
+        'pending' => outgoingWebhookCountQueue($pendingDir),
+        'processing' => outgoingWebhookCountQueue($processingDir),
+        'done' => outgoingWebhookCountQueue($doneDir),
+        'failed' => outgoingWebhookCountQueue($failedDir),
+    ],
+]);

@@ -21,6 +21,15 @@ if (empty($payload)) {
     exit;
 }
 
+$requestId = outgoingWebhookGenerateRequestId();
+$clientIp = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+$allowedIps = outgoingWebhookGetAllowedIps();
+if (!empty($allowedIps) && !in_array($clientIp, $allowedIps, true)) {
+    outgoingWebhookLogError('IP not allowed', ['ip' => $clientIp, 'requestId' => $requestId]);
+    outgoingWebhookJsonResponse(403, ['error' => 'ip_not_allowed']);
+    exit;
+}
+
 $expectedToken = outgoingWebhookGetSetting('OUTGOING_WEBHOOK_TOKEN');
 if ($expectedToken === null) {
     outgoingWebhookLogError('Missing OUTGOING_WEBHOOK_TOKEN env');
@@ -28,11 +37,12 @@ if ($expectedToken === null) {
     exit;
 }
 
-$token = outgoingWebhookExtractAuthToken($payload);
-if (!hash_equals($expectedToken, $token)) {
+$authInfo = outgoingWebhookExtractAuthInfo($payload);
+if (!hash_equals($expectedToken, $authInfo['token'])) {
     outgoingWebhookLogError('Invalid token', [
-        'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
-        'token_source' => array_keys($payload),
+        'ip' => $clientIp,
+        'requestId' => $requestId,
+        'token_source' => $authInfo['source'],
     ]);
     outgoingWebhookJsonResponse(403, ['error' => 'invalid_token']);
     exit;
@@ -41,15 +51,21 @@ if (!hash_equals($expectedToken, $token)) {
 $eventType = outgoingWebhookNormalizeEventType((string) ($payload['event'] ?? ($payload['eventName'] ?? '')));
 $entityId = outgoingWebhookExtractEntityId($payload);
 $entityType = outgoingWebhookResolveEntityType($eventType);
+$eventHandlerId = (string) ($payload['event_handler_id'] ?? 'unknown');
+$memberId = (string) ($payload['auth']['member_id'] ?? 'unknown');
 
 $eventDir = __DIR__ . '/logs/' . $eventType;
 outgoingWebhookSafeMkdir($eventDir);
 
 $maskedPayload = outgoingWebhookMaskPayload($payload);
 $raw = [
+    'requestId' => $requestId,
     'eventType' => $eventType,
     'receivedAt' => outgoingWebhookNow(),
-    'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+    'ip' => $clientIp,
+    'tokenSource' => $authInfo['source'],
+    'eventHandlerId' => $eventHandlerId,
+    'memberId' => $memberId,
     'payload' => $maskedPayload,
 ];
 
@@ -60,18 +76,23 @@ if (!outgoingWebhookWriteJson($rawPath, $raw)) {
 
 $eventLogPath = $eventDir . '/event.log';
 $eventLogLine = sprintf(
-    '%s | IP=%s | event=%s | entityType=%s | entityId=%s',
+    '%s | IP=%s | requestId=%s | event=%s | entityType=%s | entityId=%s | eventHandlerId=%s | memberId=%s | tokenSource=%s',
     outgoingWebhookNow(),
-    $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+    $clientIp,
+    $requestId,
     $eventType,
     $entityType,
-    $entityId ?? 'unknown'
+    $entityId ?? 'unknown',
+    $eventHandlerId,
+    $memberId,
+    $authInfo['source']
 );
 if (!outgoingWebhookAppendLine($eventLogPath, $eventLogLine)) {
     outgoingWebhookLogError('Failed to write event.log', ['path' => $eventLogPath]);
 }
 
 $queueItem = [
+    'requestId' => $requestId,
     'eventType' => $eventType,
     'entityType' => $entityType,
     'entityId' => $entityId,
@@ -80,6 +101,9 @@ $queueItem = [
     'attempt' => 0,
     'priority' => 'normal',
     'source' => 'outgoing-webhook',
+    'tokenSource' => $authInfo['source'],
+    'eventHandlerId' => $eventHandlerId,
+    'memberId' => $memberId,
 ];
 
 $queueName = sprintf(
@@ -91,6 +115,76 @@ $queueName = sprintf(
 $queuePath = __DIR__ . '/queue/pending/' . $queueName;
 if (!outgoingWebhookWriteJson($queuePath, $queueItem)) {
     outgoingWebhookLogError('Failed to enqueue item', ['path' => $queuePath]);
+}
+
+if ($entityId !== null && str_starts_with($eventType, 'ONTASK')) {
+    try {
+        require_once __DIR__ . '/../app/crest.php';
+        require_once __DIR__ . '/../app/Services/Bitrix24Client.php';
+        $client = new Bitrix24Client();
+        $result = $client->call('tasks.task.get', ['id' => $entityId]);
+        if (!empty($result['error'])) {
+            outgoingWebhookLogError('Task details REST error', [
+                'requestId' => $requestId,
+                'taskId' => $entityId,
+                'error' => $result['error'],
+            ]);
+        } else {
+            $taskPayload = $result['result'] ?? $result;
+            if (is_array($taskPayload)) {
+                $taskData = $taskPayload['task'] ?? $taskPayload;
+                if (is_array($taskData)) {
+                    $details = outgoingWebhookBuildTaskDetails($taskData, $eventType, $requestId, $entityId);
+                    outgoingWebhookWriteTaskDetailsRu($eventType, $details);
+                }
+            }
+        }
+    } catch (Throwable $e) {
+        outgoingWebhookLogError('Task details exception', [
+            'requestId' => $requestId,
+            'taskId' => $entityId,
+            'message' => $e->getMessage(),
+        ]);
+    }
+}
+
+if ($entityId !== null && $eventType === 'ONTASKCOMMENTADD') {
+    $commentId = outgoingWebhookExtractCommentId($payload);
+    if ($commentId !== null) {
+        try {
+            require_once __DIR__ . '/../app/crest.php';
+            require_once __DIR__ . '/../app/Services/Bitrix24Client.php';
+            $client = new Bitrix24Client();
+            $fetch = outgoingWebhookFetchCommentDetails([$client, 'call'], $entityId, $commentId);
+            if (is_array($fetch['data'])) {
+                $details = outgoingWebhookBuildCommentDetails(
+                    $fetch['data'],
+                    $eventType,
+                    $requestId,
+                    $entityId,
+                    $commentId,
+                    $fetch['method']
+                );
+                outgoingWebhookWriteCommentDetailsRu($eventType, $details);
+            } else {
+                $fallback = outgoingWebhookBuildCommentFallback($eventType, $requestId, $entityId, $commentId);
+                outgoingWebhookWriteCommentDetailsRu($eventType, $fallback);
+                outgoingWebhookLogError('Comment details missing', [
+                    'requestId' => $requestId,
+                    'taskId' => $entityId,
+                    'commentId' => $commentId,
+                    'errors' => $fetch['errors'] ?? [],
+                ]);
+            }
+        } catch (Throwable $e) {
+            outgoingWebhookLogError('Comment details exception', [
+                'requestId' => $requestId,
+                'taskId' => $entityId,
+                'commentId' => $commentId,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
 }
 
 outgoingWebhookJsonResponse(200, ['status' => 'ok']);
