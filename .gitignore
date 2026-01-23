@@ -14,6 +14,7 @@
 # Outgoing webhook runtime files
 /outgoing-webhook/logs/
 /outgoing-webhook/queue/
+/outgoing-webhook/state/
 
 # Frontend dependencies
 /frontend/node_modules/
