@@ -2,7 +2,12 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Config/ConfigService.php';
+require_once __DIR__ . '/Core/FilesystemService.php';
+require_once __DIR__ . '/Http/RequestService.php';
+require_once __DIR__ . '/Security/AccessService.php';
+require_once __DIR__ . '/Identity/EntityIdentityService.php';
 require_once __DIR__ . '/Logging/ErrorService.php';
+require_once __DIR__ . '/Logging/LogValueFormatter.php';
 require_once __DIR__ . '/Logging/QueueStepLogger.php';
 require_once __DIR__ . '/Rest/RestService.php';
 require_once __DIR__ . '/Dicts/DictCacheService.php';
@@ -25,4 +30,6 @@ require_once __DIR__ . '/Queue/QueueService.php';
 require_once __DIR__ . '/Queue/JobStateService.php';
 require_once __DIR__ . '/Queue/QueueRunner.php';
 require_once __DIR__ . '/Task/TaskDetailsService.php';
+require_once __DIR__ . '/Task/TaskFilesService.php';
+require_once __DIR__ . '/Crm/DealFileService.php';
 require_once __DIR__ . '/Task/CommentDetailsService.php';

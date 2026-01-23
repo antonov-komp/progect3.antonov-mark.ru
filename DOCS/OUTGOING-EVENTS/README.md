@@ -11,7 +11,7 @@
  - Публичная точка: `public/outgoing-webhook/index.php`
 - Очередь и обработчик: `outgoing-webhook/tools/process-queue.php`
 - CLI‑обёртка очереди (cron): `outgoing-webhook/tools/process-queue-cli.php`
- - Общие функции: `outgoing-webhook/bootstrap.php`
+- Shim‑функции: `outgoing-webhook/bootstrap.php`
 - Сервисы очереди/обогащения: `outgoing-webhook/services/`
  - Activity First: `outgoing-webhook/activity/first/conditions.php`
  
@@ -32,3 +32,4 @@
 ## Изменения
 - 2026-01-23 18:38 (UTC+03:00, Брест): создан раздел `OUTGOING-EVENTS`.
 - 2026-01-23 20:10 (UTC+03:00, Брест): добавлена CLI‑обёртка и сервисы обработки очереди.
+- 2026-01-23 22:45 (UTC+03:00, Брест): отражена shim‑модель bootstrap.

@@ -21,7 +21,10 @@ function outgoingWebhookGetServices(): array
     $logsDir = $baseDir . '/logs';
 
     $config = new ConfigService();
-    $errors = new ErrorService();
+    $filesystem = new FilesystemService();
+    $request = new RequestService($config);
+    $formatter = new LogValueFormatter();
+    $errors = new ErrorService($filesystem, $request);
     $rest = new RestService(new Bitrix24Client(), $config, $errors);
     $dicts = new DictCacheService($rest, $errors, $logsDir . '/dicts');
     $stateStorage = new StateStorage($logsDir . '/state');
@@ -49,8 +52,22 @@ function outgoingWebhookGetServices(): array
     $jobState = new JobStateService($queue, $errors, OUTGOING_WEBHOOK_MAX_ATTEMPTS, OUTGOING_WEBHOOK_PROCESSING_TIMEOUT);
 
     $steps = new QueueStepLogger($logsDir . '/queue-steps.log');
-    $taskDetails = new TaskDetailsService();
-    $commentDetails = new CommentDetailsService($rest, $errors);
+    $taskDetails = new TaskDetailsService($filesystem, $request, $formatter);
+    $taskFiles = new TaskFilesService();
+    $dealFiles = new DealFileService($filesystem, $request, $taskFiles);
+    $identity = new EntityIdentityService($request);
+    $commentDetails = new CommentDetailsService(
+        $rest,
+        $errors,
+        $taskDetails,
+        $taskFiles,
+        $dealFiles,
+        $identity,
+        $request,
+        $formatter,
+        $filesystem,
+        $config
+    );
 
     $runner = new QueueRunner(
         $queue,
@@ -65,6 +82,12 @@ function outgoingWebhookGetServices(): array
     $services = [
         'config' => $config,
         'errors' => $errors,
+        'filesystem' => $filesystem,
+        'request' => $request,
+        'formatter' => $formatter,
+        'taskFiles' => $taskFiles,
+        'dealFiles' => $dealFiles,
+        'identity' => $identity,
         'rest' => $rest,
         'dicts' => $dicts,
         'state' => $stateStorage,
