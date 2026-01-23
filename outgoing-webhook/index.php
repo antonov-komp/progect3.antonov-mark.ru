@@ -49,7 +49,10 @@ if (!hash_equals($expectedToken, $authInfo['token'])) {
 }
 
 $eventType = outgoingWebhookNormalizeEventType((string) ($payload['event'] ?? ($payload['eventName'] ?? '')));
-$entityId = outgoingWebhookExtractEntityId($payload);
+$entityId = outgoingWebhookNormalizeEntityId(outgoingWebhookExtractEntityId($payload));
+if (str_starts_with($eventType, 'ONTASKCOMMENT') && $entityId === null) {
+    $entityId = outgoingWebhookNormalizeEntityId(outgoingWebhookExtractTaskId($payload));
+}
 $entityType = outgoingWebhookResolveEntityType($eventType);
 $eventHandlerId = (string) ($payload['event_handler_id'] ?? 'unknown');
 $memberId = (string) ($payload['auth']['member_id'] ?? 'unknown');
@@ -104,6 +107,7 @@ $queueItem = [
     'tokenSource' => $authInfo['source'],
     'eventHandlerId' => $eventHandlerId,
     'memberId' => $memberId,
+    'payload' => $maskedPayload,
 ];
 
 $queueName = sprintf(
@@ -150,37 +154,106 @@ if ($entityId !== null && str_starts_with($eventType, 'ONTASK')) {
 
 if ($entityId !== null && $eventType === 'ONTASKCOMMENTADD') {
     $commentId = outgoingWebhookExtractCommentId($payload);
+    $messageId = outgoingWebhookExtractMessageId($payload);
     if ($commentId !== null) {
+        $commentWritten = false;
+        $commentData = null;
+        $commentSource = null;
+        $taskData = null;
         try {
             require_once __DIR__ . '/../app/crest.php';
             require_once __DIR__ . '/../app/Services/Bitrix24Client.php';
             $client = new Bitrix24Client();
             $fetch = outgoingWebhookFetchCommentDetails([$client, 'call'], $entityId, $commentId);
             if (is_array($fetch['data'])) {
+                if ($taskData === null) {
+                    $taskResult = $client->call('tasks.task.get', ['id' => $entityId]);
+                    $taskPayload = $taskResult['result'] ?? $taskResult;
+                    $taskData = is_array($taskPayload) ? ($taskPayload['task'] ?? $taskPayload) : null;
+                }
+                if (is_array($taskData)) {
+                    $taskData = outgoingWebhookEnsureTaskCrmLinks($taskData, $entityId, [$client, 'call']);
+                }
+                $commentData = $fetch['data'];
+                $commentSource = $fetch['method'];
                 $details = outgoingWebhookBuildCommentDetails(
                     $fetch['data'],
                     $eventType,
                     $requestId,
                     $entityId,
                     $commentId,
-                    $fetch['method']
+                    $fetch['method'],
+                    $taskData
                 );
                 outgoingWebhookWriteCommentDetailsRu($eventType, $details);
+                $commentWritten = true;
             } else {
-                $fallback = outgoingWebhookBuildCommentFallback($eventType, $requestId, $entityId, $commentId);
-                outgoingWebhookWriteCommentDetailsRu($eventType, $fallback);
-                outgoingWebhookLogError('Comment details missing', [
-                    'requestId' => $requestId,
-                    'taskId' => $entityId,
-                    'commentId' => $commentId,
-                    'errors' => $fetch['errors'] ?? [],
-                ]);
+                if ($messageId !== null) {
+                    $taskResult = $client->call('tasks.task.get', ['id' => $entityId]);
+                    $taskPayload = $taskResult['result'] ?? $taskResult;
+                    $taskData = is_array($taskPayload) ? ($taskPayload['task'] ?? $taskPayload) : null;
+                    if (is_array($taskData)) {
+                        $taskData = outgoingWebhookEnsureTaskCrmLinks($taskData, $entityId, [$client, 'call']);
+                        $chatId = outgoingWebhookExtractChatId($taskData);
+                        if ($chatId !== null) {
+                            $chatFetch = outgoingWebhookFetchChatMessageDetails([$client, 'call'], $chatId, $messageId);
+                            if (is_array($chatFetch['data'])) {
+                                $commentData = $chatFetch['data'];
+                                $commentSource = $chatFetch['method'];
+                                $chatMessage = outgoingWebhookBuildCommentDetailsFromChat(
+                                    $chatFetch['data'],
+                                    $eventType,
+                                    $requestId,
+                                    $entityId,
+                                    $commentId,
+                                    $chatFetch['method'],
+                                    $taskData
+                                );
+                                outgoingWebhookWriteCommentDetailsRu($eventType, $chatMessage);
+                                $commentWritten = true;
+                            }
+                        }
+                    }
+                }
+
+                if (!$commentWritten) {
+                    $fallback = outgoingWebhookBuildCommentFallback($eventType, $requestId, $entityId, $commentId);
+                    outgoingWebhookWriteCommentDetailsRu($eventType, $fallback);
+                    outgoingWebhookLogError('Comment details missing', [
+                        'requestId' => $requestId,
+                        'taskId' => $entityId,
+                        'commentId' => $commentId,
+                        'messageId' => $messageId,
+                        'errors' => $fetch['errors'] ?? [],
+                    ]);
+                }
+            }
+
+            if ($commentWritten && outgoingWebhookShouldWriteCommentEnriched($entityId) && is_array($commentData)) {
+                if ($taskData === null) {
+                    $taskResult = $client->call('tasks.task.get', ['id' => $entityId]);
+                    $taskPayload = $taskResult['result'] ?? $taskResult;
+                    $taskData = is_array($taskPayload) ? ($taskPayload['task'] ?? $taskPayload) : null;
+                }
+                if (is_array($taskData)) {
+                    $rawPath = $rawPath ?? '';
+                    outgoingWebhookWriteCommentEnriched(
+                        $eventType,
+                        $entityId,
+                        $taskData,
+                        $commentData,
+                        $commentSource ?? 'unknown',
+                        $rawPath,
+                        $requestId
+                    );
+                }
             }
         } catch (Throwable $e) {
             outgoingWebhookLogError('Comment details exception', [
                 'requestId' => $requestId,
                 'taskId' => $entityId,
                 'commentId' => $commentId,
+                'messageId' => $messageId,
                 'message' => $e->getMessage(),
             ]);
         }

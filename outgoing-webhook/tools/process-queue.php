@@ -383,7 +383,9 @@ foreach (array_slice(glob($pendingDir . '/*.json') ?: [], 0, $limit) as $file) {
     $eventType = (string) ($job['eventType'] ?? 'UNKNOWN');
     $rawPath = (string) ($job['rawPath'] ?? '');
     $raw = [];
-    if ($rawPath !== '' && file_exists($rawPath)) {
+    if (isset($job['payload']) && is_array($job['payload'])) {
+        $raw = ['payload' => $job['payload']];
+    } elseif ($rawPath !== '' && file_exists($rawPath)) {
         $raw = json_decode((string) file_get_contents($rawPath), true);
     }
     if (!is_array($raw)) {
@@ -391,6 +393,10 @@ foreach (array_slice(glob($pendingDir . '/*.json') ?: [], 0, $limit) as $file) {
     }
 
     $entityId = $job['entityId'] ?? outgoingWebhookExtractEntityId($raw['payload'] ?? []);
+    $entityId = outgoingWebhookNormalizeEntityId(is_string($entityId) ? $entityId : (string) $entityId);
+    if ($entityId === null && str_starts_with($eventType, 'ONTASKCOMMENT')) {
+        $entityId = outgoingWebhookNormalizeEntityId(outgoingWebhookExtractTaskId($raw['payload'] ?? []));
+    }
     $entityType = $job['entityType'] ?? outgoingWebhookResolveEntityType($eventType);
 
     $enriched = outgoingWebhookBuildEnriched($eventType, $entityType, $entityId, $raw, $rawPath);
@@ -419,24 +425,123 @@ foreach (array_slice(glob($pendingDir . '/*.json') ?: [], 0, $limit) as $file) {
 
     if ($eventType === 'ONTASKCOMMENTADD') {
         $commentId = outgoingWebhookExtractCommentId($raw['payload'] ?? []);
+        $messageId = outgoingWebhookExtractMessageId($raw['payload'] ?? []);
         if ($commentId !== null && $entityId !== null) {
+            $commentWritten = false;
+            $commentData = null;
+            $commentSource = null;
+            $commentDetails = null;
             $fetch = outgoingWebhookFetchCommentDetails('outgoingWebhookRestCall', $entityId, $commentId);
             if (is_array($fetch['data'])) {
-                $details = outgoingWebhookBuildCommentDetails(
+                if (is_array($taskData)) {
+                    $taskData = outgoingWebhookEnsureTaskCrmLinks($taskData, $entityId, 'outgoingWebhookRestCall');
+                }
+                $commentData = $fetch['data'];
+                $commentSource = $fetch['method'];
+                $commentDetails = outgoingWebhookBuildCommentDetails(
                     $fetch['data'],
                     $eventType,
                     $job['requestId'] ?? null,
                     $entityId,
                     $commentId,
-                    $fetch['method']
+                    $fetch['method'],
+                    is_array($taskData) ? $taskData : null
                 );
-                outgoingWebhookWriteCommentDetailsRu($eventType, $details);
+                outgoingWebhookWriteCommentDetailsRu($eventType, $commentDetails);
+                $commentWritten = true;
             } else {
-                outgoingWebhookLogError('Comment details missing', [
+                if (is_array($taskData)) {
+                    $taskData = outgoingWebhookEnsureTaskCrmLinks($taskData, $entityId, 'outgoingWebhookRestCall');
+                    $chatId = outgoingWebhookExtractChatId($taskData);
+                    if ($chatId !== null && $messageId !== null) {
+                        $chatFetch = outgoingWebhookFetchChatMessageDetails('outgoingWebhookRestCall', $chatId, $messageId);
+                        if (is_array($chatFetch['data'])) {
+                            $commentData = $chatFetch['data'];
+                            $commentSource = $chatFetch['method'];
+                            $commentDetails = outgoingWebhookBuildCommentDetailsFromChat(
+                                $chatFetch['data'],
+                                $eventType,
+                                $job['requestId'] ?? null,
+                                $entityId,
+                                $commentId,
+                                $chatFetch['method'],
+                                $taskData
+                            );
+                            outgoingWebhookWriteCommentDetailsRu($eventType, $commentDetails);
+                            $commentWritten = true;
+                        }
+                    }
+                }
+
+                if (!$commentWritten) {
+                    $fallback = outgoingWebhookBuildCommentFallback(
+                        $eventType,
+                        $job['requestId'] ?? null,
+                        $entityId,
+                        $commentId
+                    );
+                    outgoingWebhookWriteCommentDetailsRu($eventType, $fallback);
+                    outgoingWebhookLogError('Comment details missing', [
+                        'requestId' => $job['requestId'] ?? 'unknown',
+                        'taskId' => $entityId,
+                        'commentId' => $commentId,
+                        'messageId' => $messageId,
+                        'errors' => $fetch['errors'] ?? [],
+                    ]);
+                }
+            }
+
+            if ($commentWritten && outgoingWebhookShouldWriteCommentEnriched($entityId) && is_array($commentData)) {
+                if (!is_array($taskData)) {
+                    $taskData = outgoingWebhookExtractTaskData($enriched);
+                }
+                if (is_array($taskData)) {
+                    outgoingWebhookWriteCommentEnriched(
+                        $eventType,
+                        $entityId,
+                        $taskData,
+                        $commentData,
+                        $commentSource ?? 'unknown',
+                        $rawPath,
+                        $job['requestId'] ?? null
+                    );
+                }
+            }
+
+            if ($commentWritten && is_array($commentDetails) && !empty($commentDetails['activityFirst'])) {
+                $fileIds = $commentDetails['fileIds'] ?? [];
+                $fileIds = is_array($fileIds) ? array_values(array_unique($fileIds)) : [];
+                $dealIds = outgoingWebhookExtractDealIds($commentDetails['crmLinks'] ?? []);
+
+                $taskAttach = ['attached' => [], 'errors' => []];
+                if (!empty($fileIds)) {
+                    $taskAttach = outgoingWebhookAttachFilesToTask($entityId, $fileIds, 'outgoingWebhookRestCall');
+                }
+
+                $dealUpdates = [];
+                $fileDataList = [];
+                foreach ($fileIds as $fileId) {
+                    $fileData = outgoingWebhookBuildDealFileData($fileId, 'outgoingWebhookRestCall');
+                    if ($fileData !== null) {
+                        $fileDataList[] = ['fileData' => $fileData];
+                    }
+                }
+
+                foreach ($dealIds as $dealId) {
+                    $dealUpdates[] = array_merge(
+                        ['dealId' => $dealId],
+                        outgoingWebhookUpdateDealFiles($dealId, 'UF_CRM_1759233362672', $fileDataList, 'outgoingWebhookRestCall')
+                    );
+                }
+
+                outgoingWebhookLogActivityFirst([
+                    'loggedAt' => outgoingWebhookNow(),
                     'requestId' => $job['requestId'] ?? 'unknown',
                     'taskId' => $entityId,
-                    'commentId' => $commentId,
-                    'errors' => $fetch['errors'] ?? [],
+                    'dealIds' => $dealIds,
+                    'fileIds' => $fileIds,
+                    'taskAttach' => $taskAttach,
+                    'dealUpdates' => $dealUpdates,
                 ]);
             }
         }
