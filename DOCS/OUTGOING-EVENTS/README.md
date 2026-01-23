@@ -9,8 +9,10 @@
  ## Где находится модуль
  - Точка входа: `outgoing-webhook/index.php`
  - Публичная точка: `public/outgoing-webhook/index.php`
- - Очередь и обработчик: `outgoing-webhook/tools/process-queue.php`
+- Очередь и обработчик: `outgoing-webhook/tools/process-queue.php`
+- CLI‑обёртка очереди (cron): `outgoing-webhook/tools/process-queue-cli.php`
  - Общие функции: `outgoing-webhook/bootstrap.php`
+- Сервисы очереди/обогащения: `outgoing-webhook/services/`
  - Activity First: `outgoing-webhook/activity/first/conditions.php`
  
  ## Состав раздела
@@ -27,5 +29,6 @@
  - `DOCS/TASKS/TASK-014-07-event-registry.md` — реестр событий.
  - `DOCS/LOGS-Managment/outgoing-webhook-logs.md` — структура логов.
  
- ## Изменения
- - 2026-01-23 18:38 (UTC+03:00, Брест): создан раздел `OUTGOING-EVENTS`.
+## Изменения
+- 2026-01-23 18:38 (UTC+03:00, Брест): создан раздел `OUTGOING-EVENTS`.
+- 2026-01-23 20:10 (UTC+03:00, Брест): добавлена CLI‑обёртка и сервисы обработки очереди.

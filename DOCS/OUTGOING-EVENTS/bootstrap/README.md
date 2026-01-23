@@ -74,9 +74,16 @@
  ## Раздел 12. Ответы эндпоинта
  - `outgoingWebhookJsonResponse()` — единая JSON‑обёртка ответов.
  
- ## Где файл используется
- - `outgoing-webhook/index.php` — приём события, запись логов, быстрые детали задач/комментариев.
- - `outgoing-webhook/tools/process-queue.php` — обогащение очереди и детали.
+## Где файл используется
+- `outgoing-webhook/index.php` — приём события, запись логов, быстрые детали задач/комментариев.
+- `outgoing-webhook/tools/process-queue.php` — тонкая обёртка над сервисами очереди.
+- `outgoing-webhook/tools/process-queue-cli.php` — CLI‑запуск (cron) с теми же сервисами.
+
+## Связанные сервисы очереди
+- `outgoing-webhook/services/Queue/QueueRunner.php` — orchestration очереди.
+- `outgoing-webhook/services/Enrichment/EnrichmentService.php` — REST‑обогащение.
+- `outgoing-webhook/services/Task/*` — детали задач/комментариев без изменения формата.
  
- ## Изменения
- - 2026-01-23 18:48 (UTC+03:00, Брест): создано описание файла по разделам.
+## Изменения
+- 2026-01-23 18:48 (UTC+03:00, Брест): создано описание файла по разделам.
+- 2026-01-23 20:10 (UTC+03:00, Брест): добавлена связка с сервисами очереди.

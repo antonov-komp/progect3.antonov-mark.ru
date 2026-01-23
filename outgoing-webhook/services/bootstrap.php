@@ -1,0 +1,28 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/Config/ConfigService.php';
+require_once __DIR__ . '/Logging/ErrorService.php';
+require_once __DIR__ . '/Logging/QueueStepLogger.php';
+require_once __DIR__ . '/Rest/RestService.php';
+require_once __DIR__ . '/Dicts/DictCacheService.php';
+require_once __DIR__ . '/Enrichment/ValueComparator.php';
+require_once __DIR__ . '/Enrichment/StateStorage.php';
+require_once __DIR__ . '/Enrichment/EntityHandlers/EntityHandlerInterface.php';
+require_once __DIR__ . '/Enrichment/EntityHandlers/DefaultEntityHandler.php';
+require_once __DIR__ . '/Enrichment/EntityHandlers/DealHandler.php';
+require_once __DIR__ . '/Enrichment/EntityHandlers/LeadHandler.php';
+require_once __DIR__ . '/Enrichment/EntityHandlers/SmartProcessHandler.php';
+require_once __DIR__ . '/Enrichment/EntityHandlers/TaskHandler.php';
+require_once __DIR__ . '/Enrichment/EntityHandlers/UserHandler.php';
+require_once __DIR__ . '/Enrichment/EntityHandlers/ProjectHandler.php';
+require_once __DIR__ . '/Enrichment/EntityHandlers/CrmUserFieldHandler.php';
+require_once __DIR__ . '/Enrichment/EntityHandlers/ContactHandler.php';
+require_once __DIR__ . '/Enrichment/EntityHandlers/CompanyHandler.php';
+require_once __DIR__ . '/Enrichment/EnrichmentService.php';
+require_once __DIR__ . '/Queue/QueueJob.php';
+require_once __DIR__ . '/Queue/QueueService.php';
+require_once __DIR__ . '/Queue/JobStateService.php';
+require_once __DIR__ . '/Queue/QueueRunner.php';
+require_once __DIR__ . '/Task/TaskDetailsService.php';
+require_once __DIR__ . '/Task/CommentDetailsService.php';
