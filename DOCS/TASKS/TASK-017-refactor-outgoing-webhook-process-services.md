@@ -127,6 +127,27 @@ flowchart TD
 - Названия глобальных функций/констант, используемых снаружи,
   не удаляются без shim‑обёртки.
 
+### Список shim‑обёрток (из `process-queue.php`)
+Эти элементы остаются как тонкие прокси (переадресация в новые сервисы):
+- Константы:
+  - `OUTGOING_WEBHOOK_MAX_ATTEMPTS`
+  - `OUTGOING_WEBHOOK_PROCESSING_TIMEOUT`
+- Функции:
+  - `outgoingWebhookRestCall()` → `services/Rest/RestService::call()`
+  - `outgoingWebhookCountQueue()` → `services/Queue/QueueService::count()`
+  - `outgoingWebhookResolveMethod()` → `services/Enrichment/EnrichmentService::resolveMethod()`
+  - `outgoingWebhookReadDict()` → `services/Dicts/DictCacheService::read()`
+  - `outgoingWebhookWriteDict()` → `services/Dicts/DictCacheService::write()`
+  - `outgoingWebhookGetDict()` → `services/Dicts/DictCacheService::get()`
+  - `outgoingWebhookExtractEntityTypeId()` → `services/Enrichment/EnrichmentService::extractEntityTypeId()`
+  - `outgoingWebhookBuildEnriched()` → `services/Enrichment/EnrichmentService::buildEnriched()`
+  - `outgoingWebhookMoveToFailed()` → `services/Queue/JobStateService::markFailed()`
+  - `outgoingWebhookSortRecursive()` → `services/Enrichment/ValueComparator::sortRecursive()`
+  - `outgoingWebhookValuesEqual()` → `services/Enrichment/ValueComparator::valuesEqual()`
+  - `outgoingWebhookGetStatePath()` → `services/Enrichment/StateStorage::getPath()`
+  - `outgoingWebhookDetectFieldChanges()` → `services/Enrichment/StateStorage::detectFieldChanges()`
+  - `outgoingWebhookRecoverProcessing()` → `services/Queue/JobStateService::recoverProcessing()`
+
 ## Ступенчатые подзадачи (детализация)
 1. Зафиксировать список функций `process-queue.php` и их соответствие новым сервисам.
 2. Создать доменную структуру `outgoing-webhook/services/` (Config/Queue/Enrichment/Rest/Logging/Task).
@@ -199,3 +220,5 @@ flowchart TD
 - 2026-01-23 18:53 (UTC+03:00, Брест): добавлен раздел «Вопросы и ответы».
 - 2026-01-23 19:02 (UTC+03:00, Брест): добавлена детальная структура и план работ.
 - 2026-01-23 19:03 (UTC+03:00, Брест): добавлены диаграмма и блок backward‑compatibility.
+- 2026-01-23 19:03 (UTC+03:00, Брест): добавлен список shim‑обёрток.
+- 2026-01-23 19:05 (UTC+03:00, Брест): добавлено соответствие shim‑функций и сервисов.
