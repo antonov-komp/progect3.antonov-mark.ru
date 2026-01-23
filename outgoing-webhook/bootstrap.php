@@ -924,6 +924,7 @@ function outgoingWebhookBuildCommentDetails(
         'crmLinks' => $meta['crmLinks'],
     ];
 
+    $details['commentKind'] = outgoingWebhookResolveCommentKind($details['authorId'] ?? null);
     $details['activityFirst'] = outgoingWebhookEvaluateActivityFirst($details);
     return $details;
 }
@@ -941,10 +942,25 @@ function outgoingWebhookBuildCommentFallback(
         'taskId' => $taskId ?? 'unknown',
         'commentId' => $commentId ?? 'unknown',
         'authorId' => 'unknown',
+        'commentKind' => 'unknown',
         'message' => 'контекст не доступен в REST',
         'createdAt' => 'unknown',
         'sourceMethod' => 'fallback',
     ];
+}
+
+function outgoingWebhookResolveCommentKind($authorId): string
+{
+    if ($authorId === null) {
+        return 'unknown';
+    }
+
+    $value = trim((string) $authorId);
+    if ($value === '' || $value === 'unknown') {
+        return 'unknown';
+    }
+
+    return $value === '0' ? 'system' : 'user';
 }
 
 function outgoingWebhookFormatCommentDetailsRu(array $details): string
@@ -961,7 +977,7 @@ function outgoingWebhookFormatCommentDetailsRu(array $details): string
     $activityFirst = !empty($details['activityFirst']) ? 'да' : 'нет';
 
     return sprintf(
-        'Дата=%s | requestId=%s | Событие=%s | Задача=%s | Проект=%s (%s) | CRM=%s | КомментарийID=%s | Автор=%s | Создано=%s | Текст=%s | Файлы=%s | ActivityFirst=%s | Метод=%s',
+        'Дата=%s | requestId=%s | Событие=%s | Задача=%s | Проект=%s (%s) | CRM=%s | КомментарийID=%s | Автор=%s | Тип=%s | Создано=%s | Текст=%s | Файлы=%s | ActivityFirst=%s | Метод=%s',
         $details['loggedAt'] ?? 'unknown',
         $details['requestId'] ?? 'unknown',
         $details['eventType'] ?? 'unknown',
@@ -971,6 +987,7 @@ function outgoingWebhookFormatCommentDetailsRu(array $details): string
         $crmText,
         $details['commentId'] ?? 'unknown',
         $details['authorId'] ?? 'unknown',
+        $details['commentKind'] ?? 'unknown',
         $details['createdAt'] ?? 'unknown',
         outgoingWebhookNormalizeLogValue($details['message'] ?? 'unknown'),
         $filesText,
@@ -1201,6 +1218,7 @@ function outgoingWebhookBuildCommentDetailsFromChat(
         'crmLinks' => $meta['crmLinks'],
     ];
 
+    $details['commentKind'] = outgoingWebhookResolveCommentKind($details['authorId'] ?? null);
     $details['activityFirst'] = outgoingWebhookEvaluateActivityFirst($details);
     return $details;
 }
