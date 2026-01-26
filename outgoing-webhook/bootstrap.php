@@ -283,9 +283,9 @@ function outgoingWebhookGetDealFileField(string $dealId, string $field, callable
     return outgoingWebhookService('dealFiles')->getDealFileField($dealId, $field, $restCall);
 }
 
-function outgoingWebhookBuildDealFileDataFromDealEntry(array $entry): ?array
+function outgoingWebhookBuildDealFileDataFromDealEntry(array $entry, callable $restCall): ?array
 {
-    return outgoingWebhookService('dealFiles')->buildFromDealEntry($entry);
+    return outgoingWebhookService('dealFiles')->buildFromDealEntry($entry, $restCall);
 }
 
 function outgoingWebhookUpdateDealFiles(string $dealId, string $field, array $fileDataList, callable $restCall): array

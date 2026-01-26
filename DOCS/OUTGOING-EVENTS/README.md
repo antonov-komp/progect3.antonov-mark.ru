@@ -27,10 +27,18 @@
 - `09-task-services.md` — сервисы работы с задачами и комментариями (TaskDetails, TaskFiles, DealFiles, CommentDetails).
 - `10-queue-detailed.md` — детальное описание очереди обработки событий.
 - `11-enrichment-detailed.md` — детальное описание процесса обогащения данных.
+- `12-state-tracking.md` — StateStorage и отслеживание изменений полей.
 - `13-activity-first-sync.md` — синхронная обработка ActivityFirst.
+- `14-tools-allowed-events.md` — инструмент allowed-events (анализ доступных событий).
+- `15-tools-test-events.md` — инструмент test-token-events (тестирование событий).
+- `16-tools-queue-processors.md` — обработчики очереди (process-queue.php, process-queue-cli.php).
 - `17-configuration.md` — все настройки модуля (переменные окружения, config.local.php).
 - `18-error-handling.md` — обработка ошибок в модуле.
 - `19-security.md` — механизмы безопасности модуля.
+- `20-performance-metrics.md` — производительность и метрики модуля.
+- `21-testing.md` — тестирование модуля.
+- `22-bitrix24-api-integration.md` — интеграция с Bitrix24 REST API.
+- `23-file-structure.md` — структура файлов и директорий модуля.
 - `bootstrap/README.md` — разбор `outgoing-webhook/bootstrap.php` по разделам.
 - `documentation-plan.md` — план дополнительной документации модуля (пробелы и приоритеты).
  
@@ -46,15 +54,7 @@
 - 2026-01-23 20:10 (UTC+03:00, Брест): добавлена CLI‑обёртка и сервисы обработки очереди.
 - 2026-01-23 22:45 (UTC+03:00, Брест): отражена shim‑модель bootstrap.
 - 2026-01-26 (UTC+03:00, Брест): создан план дополнительной документации модуля.
-- 2026-01-26 (UTC+03:00, Брест): созданы документы высокого и среднего приоритета:
-  - `05-services-architecture.md` — архитектура сервисов
-  - `06-core-services.md` — базовые сервисы
-  - `07-enrichment-services.md` — сервисы обогащения
-  - `08-queue-services.md` — сервисы очереди
-  - `09-task-services.md` — сервисы задач
-  - `10-queue-detailed.md` — детальное описание очереди
-  - `11-enrichment-detailed.md` — детальное описание обогащения
-  - `13-activity-first-sync.md` — синхронная обработка ActivityFirst
-  - `17-configuration.md` — конфигурация модуля
-  - `18-error-handling.md` — обработка ошибок
-  - `19-security.md` — безопасность модуля
+- 2026-01-26 (UTC+03:00, Брест): созданы все документы по плану:
+  - **Высокий приоритет:** `05-services-architecture.md`, `06-core-services.md`, `08-queue-services.md`, `10-queue-detailed.md`, `17-configuration.md`
+  - **Средний приоритет:** `07-enrichment-services.md`, `09-task-services.md`, `11-enrichment-detailed.md`, `13-activity-first-sync.md`, `18-error-handling.md`, `19-security.md`
+  - **Низкий приоритет:** `12-state-tracking.md`, `14-tools-allowed-events.md`, `15-tools-test-events.md`, `16-tools-queue-processors.md`, `20-performance-metrics.md`, `21-testing.md`, `22-bitrix24-api-integration.md`, `23-file-structure.md`

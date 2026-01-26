@@ -75,8 +75,27 @@ class DealFileService
         return $normalized;
     }
 
-    public function buildFromDealEntry(array $entry): ?array
+    public function buildFromDealEntry(array $entry, callable $restCall): ?array
     {
+        // Если есть ID файла, используем REST API для получения файла (как для новых файлов)
+        // Это предотвращает искажение данных при загрузке через HTTP
+        $fileId = $entry['id'] ?? null;
+        if ($fileId !== null && is_numeric($fileId)) {
+            $info = $this->taskFiles->getDiskFileInfo((string) $fileId, $restCall);
+            if ($info !== null) {
+                $name = $info['name'] ?? ('file_' . $fileId);
+                $downloadUrl = $info['downloadUrl'] ?? $info['DOWNLOAD_URL'] ?? null;
+                if (is_string($downloadUrl) && $downloadUrl !== '') {
+                    $downloadUrl = $this->request->resolveAbsoluteUrl($downloadUrl);
+                    $base64 = $this->filesystem->downloadBase64($downloadUrl);
+                    if ($base64 !== null) {
+                        return [$name, $base64];
+                    }
+                }
+            }
+        }
+
+        // Fallback: загрузка через downloadUrl (старый способ, может искажать данные)
         $downloadUrl = $entry['downloadUrl'] ?? null;
         if (!is_string($downloadUrl) || $downloadUrl === '') {
             return null;
@@ -115,7 +134,7 @@ class DealFileService
             if (!is_array($entry)) {
                 continue;
             }
-            $fileData = $this->buildFromDealEntry($entry);
+            $fileData = $this->buildFromDealEntry($entry, $restCall);
             if ($fileData === null) {
                 $errors[] = ['fileId' => $entry['id'] ?? 'unknown', 'error' => 'failed_to_load_existing_file'];
                 continue;
