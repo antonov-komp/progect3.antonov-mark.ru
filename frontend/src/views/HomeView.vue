@@ -30,6 +30,10 @@ const showContextInfo = computed(
 );
 
 const showEmbedWarning = computed(
-  () => state.value.access.context === 'direct' || state.value.access.is_embedded === false,
+  () => 
+    state.value.allowed &&
+    (state.value.access.context === 'direct' || 
+     state.value.access.context === 'unknown' ||
+     state.value.access.is_embedded === false),
 );
 </script>

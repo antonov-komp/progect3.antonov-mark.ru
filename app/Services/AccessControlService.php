@@ -48,25 +48,33 @@ class AccessControlService
         if ($configError) {
             $decision = 'deny';
             $reason = 'config_error';
+        } elseif ($config['global_enabled'] === false) {
+            // Глобальное отключение - супер-админ может обойти
+            if ($isSuperAdmin) {
+                $decision = 'allow';
+                $reason = 'super_admin';
+            } else {
+                $decision = 'deny';
+                $reason = 'global_disabled';
+            }
+        } elseif ($isDirectContext && $denyDirect === true) {
+            // Запрет прямого доступа - применяется ко всем, включая супер-админа
+            $decision = 'deny';
+            $reason = 'deny_direct';
+        } elseif ($isDirectContext && $denyDirect === false) {
+            // Прямой доступ разрешён
+            $decision = 'allow';
+            $reason = 'direct_allowed';
         } elseif ($isSuperAdmin) {
+            // Супер-админ (только для embedded контекста)
             $decision = 'allow';
             $reason = 'super_admin';
-        } elseif ($config['global_enabled'] === false) {
-            $decision = 'deny';
-            $reason = 'global_disabled';
-        } elseif ($isDirectContext) {
-            $decision = $denyDirect === true ? 'deny' : 'allow';
-            $reason = $denyDirect === true ? 'deny_direct' : 'direct_allowed';
         } elseif ($this->isAllowedUser($userId, $config['allowed_users']) || $this->isAllowedDepartment($departmentIds, $config['allowed_departments'])) {
             $decision = 'allow';
             $reason = 'allowed_list';
         } else {
             $decision = 'deny';
             $reason = 'not_allowed';
-        }
-
-        if ($isDirectContext && $reason === 'direct_allowed' && $superAdminId !== '') {
-            $isSuperAdmin = true;
         }
 
         $isAllowed = $decision === 'allow';
