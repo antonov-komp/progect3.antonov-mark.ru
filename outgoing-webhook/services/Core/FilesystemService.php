@@ -26,7 +26,24 @@ class FilesystemService
     {
         $this->ensureDir(dirname($path));
 
-        return file_put_contents($path, $line . PHP_EOL, FILE_APPEND) !== false;
+        // Используем fopen с блокировкой для гарантии записи на диск
+        // Особенно важно после fastcgi_finish_request()
+        $handle = @fopen($path, 'a');
+        if ($handle === false) {
+            return false;
+        }
+
+        if (!flock($handle, LOCK_EX)) {
+            fclose($handle);
+            return false;
+        }
+
+        $result = fwrite($handle, $line . PHP_EOL);
+        fflush($handle); // Явная синхронизация
+        flock($handle, LOCK_UN);
+        fclose($handle);
+
+        return $result !== false;
     }
 
     public function downloadBase64(string $url): ?string
