@@ -57,13 +57,47 @@ class AccessModulesService
         $normalized = $this->normalizeConfig($config);
 
         $payload = "<?php\n\nreturn " . var_export($normalized, true) . ";\n";
+        
+        // Проверка прав на запись перед попыткой сохранения
+        $configDir = dirname(self::CONFIG_PATH);
+        if (!is_writable($configDir)) {
+            $this->logger->log('access-modules', [
+                'status' => 'error',
+                'message' => 'access modules config directory not writable',
+                'config_path' => self::CONFIG_PATH,
+                'config_dir' => $configDir,
+            ]);
+
+            return [
+                'success' => false,
+                'config' => $normalized,
+                'error_message' => 'Не удалось сохранить конфигурацию модулей. Нет прав на запись в директорию.',
+            ];
+        }
+
+        if (file_exists(self::CONFIG_PATH) && !is_writable(self::CONFIG_PATH)) {
+            $this->logger->log('access-modules', [
+                'status' => 'error',
+                'message' => 'access modules config file not writable',
+                'config_path' => self::CONFIG_PATH,
+            ]);
+
+            return [
+                'success' => false,
+                'config' => $normalized,
+                'error_message' => 'Не удалось сохранить конфигурацию модулей. Нет прав на запись в файл.',
+            ];
+        }
+
         $written = @file_put_contents(self::CONFIG_PATH, $payload, LOCK_EX);
 
         if ($written === false) {
+            $error = error_get_last();
             $this->logger->log('access-modules', [
                 'status' => 'error',
                 'message' => 'access modules config write failed',
                 'config_path' => self::CONFIG_PATH,
+                'error' => $error ? $error['message'] : 'unknown error',
             ]);
 
             return [
