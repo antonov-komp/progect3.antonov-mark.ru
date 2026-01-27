@@ -7,423 +7,95 @@ const OUTGOING_WEBHOOK_MAX_BYTES = 2097152; // 2 MB
 
 require_once __DIR__ . '/services/bootstrap.php';
 
+// Глобальный контейнер для обратной совместимости
+$GLOBALS['outgoingWebhookContainer'] = null;
+
+/**
+ * Получение глобального контейнера сервисов
+ * 
+ * @return ServiceContainer
+ */
+function outgoingWebhookContainer(): ServiceContainer
+{
+    if ($GLOBALS['outgoingWebhookContainer'] === null) {
+        $GLOBALS['outgoingWebhookContainer'] = new ServiceContainer();
+    }
+    return $GLOBALS['outgoingWebhookContainer'];
+}
+
+/**
+ * @deprecated Use ServiceContainer::get() instead
+ * Сохранено для обратной совместимости
+ */
 function outgoingWebhookService(string $key)
 {
-    static $services = [];
-    if (isset($services[$key])) {
-        return $services[$key];
-    }
-
-    switch ($key) {
-        case 'config':
-            return $services[$key] = new ConfigService();
-        case 'filesystem':
-            return $services[$key] = new FilesystemService();
-        case 'request':
-            return $services[$key] = new RequestService(outgoingWebhookService('config'));
-        case 'access':
-            return $services[$key] = new AccessService(outgoingWebhookService('config'));
-        case 'formatter':
-            return $services[$key] = new LogValueFormatter();
-        case 'errors':
-            return $services[$key] = new ErrorService(
-                outgoingWebhookService('filesystem'),
-                outgoingWebhookService('request')
-            );
-        case 'identity':
-            return $services[$key] = new EntityIdentityService(outgoingWebhookService('request'));
-        case 'taskDetails':
-            return $services[$key] = new TaskDetailsService(
-                outgoingWebhookService('filesystem'),
-                outgoingWebhookService('request'),
-                outgoingWebhookService('formatter')
-            );
-        case 'taskFiles':
-            return $services[$key] = new TaskFilesService();
-        case 'dealFiles':
-            return $services[$key] = new DealFileService(
-                outgoingWebhookService('filesystem'),
-                outgoingWebhookService('request'),
-                outgoingWebhookService('taskFiles')
-            );
-        case 'commentDetails':
-            return $services[$key] = new CommentDetailsService(
-                null,
-                outgoingWebhookService('errors'),
-                outgoingWebhookService('taskDetails'),
-                outgoingWebhookService('taskFiles'),
-                outgoingWebhookService('dealFiles'),
-                outgoingWebhookService('identity'),
-                outgoingWebhookService('request'),
-                outgoingWebhookService('formatter'),
-                outgoingWebhookService('filesystem'),
-                outgoingWebhookService('config')
-            );
-        default:
-            throw new InvalidArgumentException('Unknown service: ' . $key);
-    }
+    return outgoingWebhookContainer()->get($key);
 }
 
+// ============================================================================
+// КРИТИЧЕСКИ ВАЖНЫЕ ФУНКЦИИ (оставляем без изменений)
+// ============================================================================
+
+/**
+ * Получение текущего времени в формате ISO 8601
+ */
 function outgoingWebhookNow(): string
 {
-    return outgoingWebhookService('request')->now();
+    return outgoingWebhookContainer()->get('request')->now();
 }
 
-function outgoingWebhookGetEnv(string $key, ?string $default = null): ?string
-{
-    return outgoingWebhookService('config')->getEnv($key, $default);
-}
-
-function outgoingWebhookGetConfig(): array
-{
-    return outgoingWebhookService('config')->getConfig();
-}
-
-function outgoingWebhookGetSetting(string $key, ?string $default = null): ?string
-{
-    return outgoingWebhookService('config')->get($key, $default);
-}
-
-function outgoingWebhookSafeMkdir(string $path): void
-{
-    outgoingWebhookService('filesystem')->ensureDir($path);
-}
-
-function outgoingWebhookWriteJson(string $path, array $data): bool
-{
-    return outgoingWebhookService('filesystem')->writeJson($path, $data);
-}
-
-function outgoingWebhookAppendLine(string $path, string $line): bool
-{
-    return outgoingWebhookService('filesystem')->appendLine($path, $line);
-}
-
-function outgoingWebhookLogError(string $message, array $context = []): void
-{
-    outgoingWebhookService('errors')->log($message, $context);
-}
-
-function outgoingWebhookMaskValue(string $value): string
-{
-    return outgoingWebhookService('formatter')->maskValue($value);
-}
-
-function outgoingWebhookMaskPayload(array $payload): array
-{
-    return outgoingWebhookService('formatter')->maskPayload($payload);
-}
-
-function outgoingWebhookNormalizeLogValue($value): string
-{
-    return outgoingWebhookService('formatter')->normalize($value);
-}
-
-function outgoingWebhookGenerateRequestId(): string
-{
-    return outgoingWebhookService('request')->generateRequestId();
-}
-
-function outgoingWebhookGetAllowedIps(): array
-{
-    return outgoingWebhookService('access')->getAllowedIps();
-}
-
-function outgoingWebhookReadPayload(): array
-{
-    return outgoingWebhookService('request')->readPayload();
-}
-
-function outgoingWebhookNormalizeEventType(?string $event): string
-{
-    return outgoingWebhookService('request')->normalizeEventType($event);
-}
-
-function outgoingWebhookExtractEntityId(array $payload): ?string
-{
-    return outgoingWebhookService('identity')->extractEntityId($payload);
-}
-
-function outgoingWebhookExtractCommentId(array $payload): ?string
-{
-    return outgoingWebhookService('identity')->extractCommentId($payload);
-}
-
-function outgoingWebhookNormalizeEntityId(?string $entityId): ?string
-{
-    return outgoingWebhookService('identity')->normalizeEntityId($entityId);
-}
-
-function outgoingWebhookExtractTaskId(array $payload): ?string
-{
-    return outgoingWebhookService('identity')->extractTaskId($payload);
-}
-
-function outgoingWebhookExtractMessageId(array $payload): ?string
-{
-    return outgoingWebhookService('identity')->extractMessageId($payload);
-}
-
-function outgoingWebhookExtractAuthToken(array $payload): string
-{
-    return outgoingWebhookService('access')->extractAuthToken($payload);
-}
-
-function outgoingWebhookExtractAuthInfo(array $payload): array
-{
-    return outgoingWebhookService('access')->extractAuthInfo($payload);
-}
-
-function outgoingWebhookGetFirstValue(array $data, array $keys)
-{
-    return outgoingWebhookService('request')->getFirstValue($data, $keys);
-}
-
-function outgoingWebhookExtractTaskData(array $enriched): ?array
-{
-    return outgoingWebhookService('taskDetails')->extractTaskData($enriched);
-}
-
-function outgoingWebhookBuildTaskDetails(
-    array $taskData,
-    string $eventType,
-    ?string $requestId,
-    ?string $entityId
-): array {
-    return outgoingWebhookService('taskDetails')->buildDetails($taskData, $eventType, $requestId, $entityId);
-}
-
-function outgoingWebhookFormatTaskDetailsRu(array $details): string
-{
-    return outgoingWebhookService('taskDetails')->formatDetailsRu($details);
-}
-
-function outgoingWebhookWriteTaskDetailsRu(string $eventType, array $details): void
-{
-    outgoingWebhookService('taskDetails')->writeDetailsRu($eventType, $details);
-}
-
-function outgoingWebhookExtractTaskMeta(?array $taskData): array
-{
-    return outgoingWebhookService('taskDetails')->extractMeta($taskData);
-}
-
-function outgoingWebhookLoadActivityFirstConditions(): array
-{
-    return outgoingWebhookService('taskDetails')->loadActivityFirstConditions();
-}
-
-function outgoingWebhookMessageHasKeyword(string $message, array $keywords): bool
-{
-    return outgoingWebhookService('taskDetails')->messageHasKeyword($message, $keywords);
-}
-
-function outgoingWebhookHasDealLink(array $crmLinks, string $dealPrefix): bool
-{
-    return outgoingWebhookService('taskDetails')->hasDealLink($crmLinks, $dealPrefix);
-}
-
-function outgoingWebhookEvaluateActivityFirst(array $details): bool
-{
-    return outgoingWebhookService('taskDetails')->evaluateActivityFirst($details);
-}
-
-function outgoingWebhookLoadTaskCrmLinks(string $taskId, callable $restCall): array
-{
-    return outgoingWebhookService('taskDetails')->loadCrmLinks($taskId, $restCall);
-}
-
-function outgoingWebhookEnsureTaskCrmLinks(?array $taskData, string $taskId, callable $restCall): ?array
-{
-    return outgoingWebhookService('taskDetails')->ensureCrmLinks($taskData, $taskId, $restCall);
-}
-
-function outgoingWebhookExtractDealIds(array $crmLinks): array
-{
-    return outgoingWebhookService('taskDetails')->extractDealIds($crmLinks);
-}
-
-function outgoingWebhookGetTaskAttachedFiles(string $taskId, callable $restCall): array
-{
-    return outgoingWebhookService('taskFiles')->getAttachedFiles($taskId, $restCall);
-}
-
-function outgoingWebhookAttachFilesToTask(string $taskId, array $fileIds, callable $restCall): array
-{
-    return outgoingWebhookService('taskFiles')->attachFiles($taskId, $fileIds, $restCall);
-}
-
-function outgoingWebhookGetDiskFileInfo(string $fileId, callable $restCall): ?array
-{
-    return outgoingWebhookService('taskFiles')->getDiskFileInfo($fileId, $restCall);
-}
-
-function outgoingWebhookDownloadBase64FromUrl(string $url): ?string
-{
-    return outgoingWebhookService('filesystem')->downloadBase64($url);
-}
-
-function outgoingWebhookGetClientEndpoint(): ?string
-{
-    return outgoingWebhookService('config')->getClientEndpoint();
-}
-
-function outgoingWebhookResolveAbsoluteUrl(string $url): string
-{
-    return outgoingWebhookService('request')->resolveAbsoluteUrl($url);
-}
-
-function outgoingWebhookBuildDealFileData(string $fileId, callable $restCall): ?array
-{
-    return outgoingWebhookService('dealFiles')->buildDealFileData($fileId, $restCall);
-}
-
-function outgoingWebhookGetDealFileField(string $dealId, string $field, callable $restCall): array
-{
-    return outgoingWebhookService('dealFiles')->getDealFileField($dealId, $field, $restCall);
-}
-
-function outgoingWebhookBuildDealFileDataFromDealEntry(array $entry, callable $restCall): ?array
-{
-    return outgoingWebhookService('dealFiles')->buildFromDealEntry($entry, $restCall);
-}
-
-function outgoingWebhookUpdateDealFiles(string $dealId, string $field, array $fileDataList, callable $restCall): array
-{
-    return outgoingWebhookService('dealFiles')->updateDealFiles($dealId, $field, $fileDataList, $restCall);
-}
-
-function outgoingWebhookLogActivityFirst(array $entry): void
-{
-    outgoingWebhookService('taskDetails')->logActivityFirst($entry);
-}
-
-function outgoingWebhookBuildCommentDetails(
-    array $commentData,
-    string $eventType,
-    ?string $requestId,
-    ?string $taskId,
-    ?string $commentId,
-    ?string $sourceMethod,
-    ?array $taskData = null
-): array {
-    return outgoingWebhookService('commentDetails')->buildDetails(
-        $commentData,
-        $eventType,
-        $requestId,
-        $taskId,
-        $commentId,
-        $sourceMethod,
-        $taskData
-    );
-}
-
-function outgoingWebhookBuildCommentFallback(
-    string $eventType,
-    ?string $requestId,
-    ?string $taskId,
-    ?string $commentId
-): array {
-    return outgoingWebhookService('commentDetails')->buildFallback($eventType, $requestId, $taskId, $commentId);
-}
-
-function outgoingWebhookResolveCommentKind($authorId): string
-{
-    return outgoingWebhookService('commentDetails')->resolveKind($authorId);
-}
-
-function outgoingWebhookFormatCommentDetailsRu(array $details): string
-{
-    return outgoingWebhookService('commentDetails')->formatDetailsRu($details);
-}
-
-function outgoingWebhookWriteCommentDetailsRu(string $eventType, array $details): void
-{
-    outgoingWebhookService('commentDetails')->writeDetailsRu($eventType, $details);
-}
-
-function outgoingWebhookFindCommentItem($payload, string $commentId): ?array
-{
-    return outgoingWebhookService('commentDetails')->findCommentItem($payload, $commentId);
-}
-
-function outgoingWebhookFetchCommentDetails(callable $restCall, string $taskId, string $commentId): array
-{
-    return outgoingWebhookService('commentDetails')->fetchDetails($restCall, $taskId, $commentId);
-}
-
-function outgoingWebhookExtractChatId(array $taskData): ?string
-{
-    return outgoingWebhookService('commentDetails')->extractChatId($taskData);
-}
-
-function outgoingWebhookFindChatMessage(array $payload, string $messageId): ?array
-{
-    return outgoingWebhookService('commentDetails')->findChatMessage($payload, $messageId);
-}
-
-function outgoingWebhookFetchChatMessageDetails(callable $restCall, string $chatId, string $messageId): array
-{
-    return outgoingWebhookService('commentDetails')->fetchChatMessageDetails($restCall, $chatId, $messageId);
-}
-
-function outgoingWebhookBuildCommentDetailsFromChat(
-    array $messageData,
-    string $eventType,
-    ?string $requestId,
-    ?string $taskId,
-    ?string $commentId,
-    ?string $sourceMethod,
-    ?array $taskData = null
-): array {
-    return outgoingWebhookService('commentDetails')->buildDetailsFromChat(
-        $messageData,
-        $eventType,
-        $requestId,
-        $taskId,
-        $commentId,
-        $sourceMethod,
-        $taskData
-    );
-}
-
-function outgoingWebhookWriteCommentEnriched(
-    string $eventType,
-    string $entityId,
-    array $taskData,
-    array $commentData,
-    string $sourceMethod,
-    string $rawPath,
-    ?string $requestId
-): void {
-    outgoingWebhookService('commentDetails')->writeEnriched(
-        $eventType,
-        $entityId,
-        $taskData,
-        $commentData,
-        $sourceMethod,
-        $rawPath,
-        $requestId
-    );
-}
-
-function outgoingWebhookShouldWriteCommentEnriched(?string $taskId): bool
-{
-    return outgoingWebhookService('commentDetails')->shouldWriteEnriched($taskId);
-}
-
-function outgoingWebhookResolveEntityType(string $eventType): string
-{
-    return outgoingWebhookService('identity')->resolveEntityType($eventType);
-}
-
+/**
+ * Отправка JSON-ответа
+ */
 function outgoingWebhookJsonResponse(int $statusCode, array $payload): void
 {
-    outgoingWebhookService('request')->jsonResponse($statusCode, $payload);
+    outgoingWebhookContainer()->get('request')->jsonResponse($statusCode, $payload);
+}
+
+/**
+ * Логирование ошибки
+ */
+function outgoingWebhookLogError(string $message, array $context = []): void
+{
+    outgoingWebhookContainer()->get('errors')->log($message, $context);
+}
+
+/**
+ * Получение настройки
+ */
+function outgoingWebhookGetSetting(string $key, ?string $default = null): ?string
+{
+    return outgoingWebhookContainer()->get('config')->get($key, $default);
+}
+
+/**
+ * Чтение payload из запроса
+ */
+function outgoingWebhookReadPayload(): array
+{
+    return outgoingWebhookContainer()->get('request')->readPayload();
+}
+
+/**
+ * Генерация ID запроса
+ */
+function outgoingWebhookGenerateRequestId(): string
+{
+    return outgoingWebhookContainer()->get('request')->generateRequestId();
+}
+
+/**
+ * Извлечение информации об аутентификации
+ */
+function outgoingWebhookExtractAuthInfo(array $payload): array
+{
+    return outgoingWebhookContainer()->get('access')->extractAuthInfo($payload);
 }
 
 /**
  * Получение сервисов для синхронной обработки ActivityFirst
+ * 
+ * Использует ServiceContainer для создания сервисов
  * 
  * @return array Массив сервисов
  */
@@ -436,45 +108,21 @@ function outgoingWebhookGetSyncServices(): array
 
     require_once __DIR__ . '/../app/crest.php';
     require_once __DIR__ . '/../app/Services/Bitrix24Client.php';
-    require_once __DIR__ . '/services/bootstrap.php';
 
-    $config = new ConfigService();
-    $filesystem = new FilesystemService();
-    $request = new RequestService($config);
-    $formatter = new LogValueFormatter();
-    $errors = new ErrorService($filesystem, $request);
-    $rest = new RestService(new Bitrix24Client(), $config, $errors);
+    $container = new ServiceContainer();
     
-    $taskDetails = new TaskDetailsService($filesystem, $request, $formatter);
-    $taskFiles = new TaskFilesService();
-    $dealFiles = new DealFileService($filesystem, $request, $taskFiles);
-    $identity = new EntityIdentityService($request);
-    
-    $commentDetailsService = new CommentDetailsService(
-        $rest,
-        $errors,
-        $taskDetails,
-        $taskFiles,
-        $dealFiles,
-        $identity,
-        $request,
-        $formatter,
-        $filesystem,
-        $config
-    );
-
     $services = [
-        'config' => $config,
-        'filesystem' => $filesystem,
-        'request' => $request,
-        'formatter' => $formatter,
-        'errors' => $errors,
-        'rest' => $rest,
-        'taskDetails' => $taskDetails,
-        'taskFiles' => $taskFiles,
-        'dealFiles' => $dealFiles,
-        'identity' => $identity,
-        'commentDetailsService' => $commentDetailsService,
+        'config' => $container->get('config'),
+        'filesystem' => $container->get('filesystem'),
+        'request' => $container->get('request'),
+        'formatter' => $container->get('formatter'),
+        'errors' => $container->get('errors'),
+        'rest' => $container->get('rest'),
+        'taskDetails' => $container->get('taskDetails'),
+        'taskFiles' => $container->get('taskFiles'),
+        'dealFiles' => $container->get('dealFiles'),
+        'identity' => $container->get('identity'),
+        'commentDetailsService' => $container->get('commentDetails'),
     ];
 
     return $services;
@@ -616,4 +264,496 @@ function outgoingWebhookProcessActivityFirstSync(
         fclose($lockHandle);
         return false;
     }
+}
+
+// ============================================================================
+// ФУНКЦИИ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ (@deprecated)
+// ============================================================================
+
+/**
+ * @deprecated Use ServiceContainer::get('config')->getEnv($key, $default) instead
+ */
+function outgoingWebhookGetEnv(string $key, ?string $default = null): ?string
+{
+    return outgoingWebhookContainer()->get('config')->getEnv($key, $default);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('config')->getConfig() instead
+ */
+function outgoingWebhookGetConfig(): array
+{
+    return outgoingWebhookContainer()->get('config')->getConfig();
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('filesystem')->ensureDir($path) instead
+ */
+function outgoingWebhookSafeMkdir(string $path): void
+{
+    outgoingWebhookContainer()->get('filesystem')->ensureDir($path);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('filesystem')->writeJson($path, $data) instead
+ */
+function outgoingWebhookWriteJson(string $path, array $data): bool
+{
+    return outgoingWebhookContainer()->get('filesystem')->writeJson($path, $data);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('filesystem')->appendLine($path, $line) instead
+ */
+function outgoingWebhookAppendLine(string $path, string $line): bool
+{
+    return outgoingWebhookContainer()->get('filesystem')->appendLine($path, $line);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('formatter')->maskValue($value) instead
+ */
+function outgoingWebhookMaskValue(string $value): string
+{
+    return outgoingWebhookContainer()->get('formatter')->maskValue($value);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('formatter')->maskPayload($payload) instead
+ */
+function outgoingWebhookMaskPayload(array $payload): array
+{
+    return outgoingWebhookContainer()->get('formatter')->maskPayload($payload);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('formatter')->normalize($value) instead
+ */
+function outgoingWebhookNormalizeLogValue($value): string
+{
+    return outgoingWebhookContainer()->get('formatter')->normalize($value);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('access')->getAllowedIps() instead
+ */
+function outgoingWebhookGetAllowedIps(): array
+{
+    return outgoingWebhookContainer()->get('access')->getAllowedIps();
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('request')->normalizeEventType($event) instead
+ */
+function outgoingWebhookNormalizeEventType(?string $event): string
+{
+    return outgoingWebhookContainer()->get('request')->normalizeEventType($event);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('identity')->extractEntityId($payload) instead
+ */
+function outgoingWebhookExtractEntityId(array $payload): ?string
+{
+    return outgoingWebhookContainer()->get('identity')->extractEntityId($payload);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('identity')->extractCommentId($payload) instead
+ */
+function outgoingWebhookExtractCommentId(array $payload): ?string
+{
+    return outgoingWebhookContainer()->get('identity')->extractCommentId($payload);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('identity')->normalizeEntityId($entityId) instead
+ */
+function outgoingWebhookNormalizeEntityId(?string $entityId): ?string
+{
+    return outgoingWebhookContainer()->get('identity')->normalizeEntityId($entityId);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('identity')->extractTaskId($payload) instead
+ */
+function outgoingWebhookExtractTaskId(array $payload): ?string
+{
+    return outgoingWebhookContainer()->get('identity')->extractTaskId($payload);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('identity')->extractMessageId($payload) instead
+ */
+function outgoingWebhookExtractMessageId(array $payload): ?string
+{
+    return outgoingWebhookContainer()->get('identity')->extractMessageId($payload);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('access')->extractAuthToken($payload) instead
+ */
+function outgoingWebhookExtractAuthToken(array $payload): string
+{
+    return outgoingWebhookContainer()->get('access')->extractAuthToken($payload);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('request')->getFirstValue($data, $keys) instead
+ */
+function outgoingWebhookGetFirstValue(array $data, array $keys)
+{
+    return outgoingWebhookContainer()->get('request')->getFirstValue($data, $keys);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('identity')->resolveEntityType($eventType) instead
+ */
+function outgoingWebhookResolveEntityType(string $eventType): string
+{
+    return outgoingWebhookContainer()->get('identity')->resolveEntityType($eventType);
+}
+
+// Остальные функции-обертки для обратной совместимости (помечены как @deprecated)
+// Используются в других файлах проекта, поэтому оставлены для совместимости
+
+/**
+ * @deprecated Use ServiceContainer::get('taskDetails')->extractTaskData($enriched) instead
+ */
+function outgoingWebhookExtractTaskData(array $enriched): ?array
+{
+    return outgoingWebhookContainer()->get('taskDetails')->extractTaskData($enriched);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskDetails')->buildDetails(...) instead
+ */
+function outgoingWebhookBuildTaskDetails(
+    array $taskData,
+    string $eventType,
+    ?string $requestId,
+    ?string $entityId
+): array {
+    return outgoingWebhookContainer()->get('taskDetails')->buildDetails($taskData, $eventType, $requestId, $entityId);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskDetails')->formatDetailsRu($details) instead
+ */
+function outgoingWebhookFormatTaskDetailsRu(array $details): string
+{
+    return outgoingWebhookContainer()->get('taskDetails')->formatDetailsRu($details);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskDetails')->writeDetailsRu($eventType, $details) instead
+ */
+function outgoingWebhookWriteTaskDetailsRu(string $eventType, array $details): void
+{
+    outgoingWebhookContainer()->get('taskDetails')->writeDetailsRu($eventType, $details);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskDetails')->extractMeta($taskData) instead
+ */
+function outgoingWebhookExtractTaskMeta(?array $taskData): array
+{
+    return outgoingWebhookContainer()->get('taskDetails')->extractMeta($taskData);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskDetails')->loadActivityFirstConditions() instead
+ */
+function outgoingWebhookLoadActivityFirstConditions(): array
+{
+    return outgoingWebhookContainer()->get('taskDetails')->loadActivityFirstConditions();
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskDetails')->messageHasKeyword($message, $keywords) instead
+ */
+function outgoingWebhookMessageHasKeyword(string $message, array $keywords): bool
+{
+    return outgoingWebhookContainer()->get('taskDetails')->messageHasKeyword($message, $keywords);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskDetails')->hasDealLink($crmLinks, $dealPrefix) instead
+ */
+function outgoingWebhookHasDealLink(array $crmLinks, string $dealPrefix): bool
+{
+    return outgoingWebhookContainer()->get('taskDetails')->hasDealLink($crmLinks, $dealPrefix);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskDetails')->evaluateActivityFirst($details) instead
+ */
+function outgoingWebhookEvaluateActivityFirst(array $details): bool
+{
+    return outgoingWebhookContainer()->get('taskDetails')->evaluateActivityFirst($details);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskDetails')->loadCrmLinks($taskId, $restCall) instead
+ */
+function outgoingWebhookLoadTaskCrmLinks(string $taskId, callable $restCall): array
+{
+    return outgoingWebhookContainer()->get('taskDetails')->loadCrmLinks($taskId, $restCall);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskDetails')->ensureCrmLinks($taskData, $taskId, $restCall) instead
+ */
+function outgoingWebhookEnsureTaskCrmLinks(?array $taskData, string $taskId, callable $restCall): ?array
+{
+    return outgoingWebhookContainer()->get('taskDetails')->ensureCrmLinks($taskData, $taskId, $restCall);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskDetails')->extractDealIds($crmLinks) instead
+ */
+function outgoingWebhookExtractDealIds(array $crmLinks): array
+{
+    return outgoingWebhookContainer()->get('taskDetails')->extractDealIds($crmLinks);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskFiles')->getAttachedFiles($taskId, $restCall) instead
+ */
+function outgoingWebhookGetTaskAttachedFiles(string $taskId, callable $restCall): array
+{
+    return outgoingWebhookContainer()->get('taskFiles')->getAttachedFiles($taskId, $restCall);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskFiles')->attachFiles($taskId, $fileIds, $restCall) instead
+ */
+function outgoingWebhookAttachFilesToTask(string $taskId, array $fileIds, callable $restCall): array
+{
+    return outgoingWebhookContainer()->get('taskFiles')->attachFiles($taskId, $fileIds, $restCall);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskFiles')->getDiskFileInfo($fileId, $restCall) instead
+ */
+function outgoingWebhookGetDiskFileInfo(string $fileId, callable $restCall): ?array
+{
+    return outgoingWebhookContainer()->get('taskFiles')->getDiskFileInfo($fileId, $restCall);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('filesystem')->downloadBase64($url) instead
+ */
+function outgoingWebhookDownloadBase64FromUrl(string $url): ?string
+{
+    return outgoingWebhookContainer()->get('filesystem')->downloadBase64($url);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('config')->getClientEndpoint() instead
+ */
+function outgoingWebhookGetClientEndpoint(): ?string
+{
+    return outgoingWebhookContainer()->get('config')->getClientEndpoint();
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('request')->resolveAbsoluteUrl($url) instead
+ */
+function outgoingWebhookResolveAbsoluteUrl(string $url): string
+{
+    return outgoingWebhookContainer()->get('request')->resolveAbsoluteUrl($url);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('dealFiles')->buildDealFileData($fileId, $restCall) instead
+ */
+function outgoingWebhookBuildDealFileData(string $fileId, callable $restCall): ?array
+{
+    return outgoingWebhookContainer()->get('dealFiles')->buildDealFileData($fileId, $restCall);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('dealFiles')->getDealFileField($dealId, $field, $restCall) instead
+ */
+function outgoingWebhookGetDealFileField(string $dealId, string $field, callable $restCall): array
+{
+    return outgoingWebhookContainer()->get('dealFiles')->getDealFileField($dealId, $field, $restCall);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('dealFiles')->buildFromDealEntry($entry, $restCall) instead
+ */
+function outgoingWebhookBuildDealFileDataFromDealEntry(array $entry, callable $restCall): ?array
+{
+    return outgoingWebhookContainer()->get('dealFiles')->buildFromDealEntry($entry, $restCall);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('dealFiles')->updateDealFiles($dealId, $field, $fileDataList, $restCall) instead
+ */
+function outgoingWebhookUpdateDealFiles(string $dealId, string $field, array $fileDataList, callable $restCall): array
+{
+    return outgoingWebhookContainer()->get('dealFiles')->updateDealFiles($dealId, $field, $fileDataList, $restCall);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('taskDetails')->logActivityFirst($entry) instead
+ */
+function outgoingWebhookLogActivityFirst(array $entry): void
+{
+    outgoingWebhookContainer()->get('taskDetails')->logActivityFirst($entry);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('commentDetails')->buildDetails(...) instead
+ */
+function outgoingWebhookBuildCommentDetails(
+    array $commentData,
+    string $eventType,
+    ?string $requestId,
+    ?string $taskId,
+    ?string $commentId,
+    ?string $sourceMethod,
+    ?array $taskData = null
+): array {
+    return outgoingWebhookContainer()->get('commentDetails')->buildDetails(
+        $commentData,
+        $eventType,
+        $requestId,
+        $taskId,
+        $commentId,
+        $sourceMethod,
+        $taskData
+    );
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('commentDetails')->buildFallback(...) instead
+ */
+function outgoingWebhookBuildCommentFallback(
+    string $eventType,
+    ?string $requestId,
+    ?string $taskId,
+    ?string $commentId
+): array {
+    return outgoingWebhookContainer()->get('commentDetails')->buildFallback($eventType, $requestId, $taskId, $commentId);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('commentDetails')->resolveKind($authorId) instead
+ */
+function outgoingWebhookResolveCommentKind($authorId): string
+{
+    return outgoingWebhookContainer()->get('commentDetails')->resolveKind($authorId);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('commentDetails')->formatDetailsRu($details) instead
+ */
+function outgoingWebhookFormatCommentDetailsRu(array $details): string
+{
+    return outgoingWebhookContainer()->get('commentDetails')->formatDetailsRu($details);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('commentDetails')->writeDetailsRu($eventType, $details) instead
+ */
+function outgoingWebhookWriteCommentDetailsRu(string $eventType, array $details): void
+{
+    outgoingWebhookContainer()->get('commentDetails')->writeDetailsRu($eventType, $details);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('commentDetails')->findCommentItem($payload, $commentId) instead
+ */
+function outgoingWebhookFindCommentItem($payload, string $commentId): ?array
+{
+    return outgoingWebhookContainer()->get('commentDetails')->findCommentItem($payload, $commentId);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('commentDetails')->fetchDetails($restCall, $taskId, $commentId) instead
+ */
+function outgoingWebhookFetchCommentDetails(callable $restCall, string $taskId, string $commentId): array
+{
+    return outgoingWebhookContainer()->get('commentDetails')->fetchDetails($restCall, $taskId, $commentId);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('commentDetails')->extractChatId($taskData) instead
+ */
+function outgoingWebhookExtractChatId(array $taskData): ?string
+{
+    return outgoingWebhookContainer()->get('commentDetails')->extractChatId($taskData);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('commentDetails')->findChatMessage($payload, $messageId) instead
+ */
+function outgoingWebhookFindChatMessage(array $payload, string $messageId): ?array
+{
+    return outgoingWebhookContainer()->get('commentDetails')->findChatMessage($payload, $messageId);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('commentDetails')->fetchChatMessageDetails($restCall, $chatId, $messageId) instead
+ */
+function outgoingWebhookFetchChatMessageDetails(callable $restCall, string $chatId, string $messageId): array
+{
+    return outgoingWebhookContainer()->get('commentDetails')->fetchChatMessageDetails($restCall, $chatId, $messageId);
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('commentDetails')->buildDetailsFromChat(...) instead
+ */
+function outgoingWebhookBuildCommentDetailsFromChat(
+    array $messageData,
+    string $eventType,
+    ?string $requestId,
+    ?string $taskId,
+    ?string $commentId,
+    ?string $sourceMethod,
+    ?array $taskData = null
+): array {
+    return outgoingWebhookContainer()->get('commentDetails')->buildDetailsFromChat(
+        $messageData,
+        $eventType,
+        $requestId,
+        $taskId,
+        $commentId,
+        $sourceMethod,
+        $taskData
+    );
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('commentDetails')->writeEnriched(...) instead
+ */
+function outgoingWebhookWriteCommentEnriched(
+    string $eventType,
+    string $entityId,
+    array $taskData,
+    array $commentData,
+    string $sourceMethod,
+    string $rawPath,
+    ?string $requestId
+): void {
+    outgoingWebhookContainer()->get('commentDetails')->writeEnriched(
+        $eventType,
+        $entityId,
+        $taskData,
+        $commentData,
+        $sourceMethod,
+        $rawPath,
+        $requestId
+    );
+}
+
+/**
+ * @deprecated Use ServiceContainer::get('commentDetails')->shouldWriteEnriched($taskId) instead
+ */
+function outgoingWebhookShouldWriteCommentEnriched(?string $taskId): bool
+{
+    return outgoingWebhookContainer()->get('commentDetails')->shouldWriteEnriched($taskId);
 }

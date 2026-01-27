@@ -1,6 +1,12 @@
 <?php
 declare(strict_types=1);
 
+// Исключения
+require_once __DIR__ . '/Exceptions/InvalidRequestException.php';
+require_once __DIR__ . '/Exceptions/AuthenticationException.php';
+require_once __DIR__ . '/Exceptions/ProcessingException.php';
+
+// Базовые сервисы
 require_once __DIR__ . '/Config/ConfigService.php';
 require_once __DIR__ . '/Core/FilesystemService.php';
 require_once __DIR__ . '/Http/RequestService.php';
@@ -32,4 +38,17 @@ require_once __DIR__ . '/Queue/QueueRunner.php';
 require_once __DIR__ . '/Task/TaskDetailsService.php';
 require_once __DIR__ . '/Task/TaskFilesService.php';
 require_once __DIR__ . '/Crm/DealFileService.php';
+require_once __DIR__ . '/Task/Comment/CommentFetcher.php';
+require_once __DIR__ . '/Task/Comment/CommentBuilder.php';
+require_once __DIR__ . '/Task/Comment/CommentFormatter.php';
+require_once __DIR__ . '/Task/Comment/CommentWriter.php';
+require_once __DIR__ . '/Task/Comment/ActivityFirstProcessor.php';
 require_once __DIR__ . '/Task/CommentDetailsService.php';
+
+// Контейнер и компоненты рефакторинга
+require_once __DIR__ . '/Container/ServiceContainer.php';
+require_once __DIR__ . '/Http/RequestValidator.php';
+require_once __DIR__ . '/Security/AuthMiddleware.php';
+require_once __DIR__ . '/Event/EventProcessor.php';
+require_once __DIR__ . '/Event/Handlers/TaskEventHandler.php';
+require_once __DIR__ . '/Event/Handlers/CommentEventHandler.php';
