@@ -157,15 +157,54 @@ class CommentFetcher
                 continue;
             }
 
-            $payloadData = $result['result'] ?? $result;
-            if (!is_array($payloadData)) {
-                $errors[] = ['method' => $attempt['method'], 'error' => 'invalid_payload'];
+            // Обработка структуры ответа im.dialog.messages.get
+            // Ответ может быть: {result: {messages: [...]}} или {messages: [...]} или просто массив сообщений
+            $messagesList = null;
+            if (isset($result['result']) && is_array($result['result'])) {
+                // Вариант 1: {result: {messages: [...]}}
+                $messagesList = $result['result']['messages'] ?? $result['result'];
+            } elseif (isset($result['messages']) && is_array($result['messages'])) {
+                // Вариант 2: {messages: [...]}
+                $messagesList = $result['messages'];
+            } elseif (is_array($result) && isset($result[0]) && is_array($result[0])) {
+                // Вариант 3: массив сообщений напрямую
+                $messagesList = $result;
+            }
+
+            if (!is_array($messagesList) || empty($messagesList)) {
+                $errors[] = ['method' => $attempt['method'], 'error' => 'no_messages'];
                 continue;
             }
 
-            $message = $this->findChatMessage($payloadData, $messageId);
+            // Логирование структуры ответа для отладки
+            $this->errors->log('CommentFetcher::fetchFromChat - API response structure', [
+                'method' => $attempt['method'],
+                'messagesCount' => count($messagesList),
+                'messageId' => $messageId,
+                'firstMessageKeys' => !empty($messagesList) && is_array($messagesList[0]) ? array_keys($messagesList[0]) : null,
+            ]);
+
+            // Поиск сообщения в массиве
+            $message = $this->findChatMessage(['messages' => $messagesList], $messageId);
             if (is_array($message)) {
+                // Логирование найденного сообщения
+                $this->errors->log('CommentFetcher::fetchFromChat - message found', [
+                    'messageId' => $messageId,
+                    'messageKeys' => array_keys($message),
+                    'hasAuthorId' => isset($message['author_id']) || isset($message['AUTHOR_ID']),
+                    'hasText' => isset($message['text']) || isset($message['TEXT']),
+                    'hasParams' => isset($message['params']),
+                ]);
                 return ['data' => $message, 'method' => $attempt['method'], 'errors' => $errors];
+            } else {
+                // Логирование, если сообщение не найдено
+                $this->errors->log('CommentFetcher::fetchFromChat - message not found', [
+                    'messageId' => $messageId,
+                    'messagesCount' => count($messagesList),
+                    'sampleIds' => array_slice(array_map(function($msg) {
+                        return is_array($msg) ? ($msg['id'] ?? $msg['ID'] ?? 'no-id') : 'not-array';
+                    }, $messagesList), 0, 5),
+                ]);
             }
         }
 
@@ -215,20 +254,54 @@ class CommentFetcher
 
     /**
      * Поиск сообщения в payload чата
+     * 
+     * Структура ответа im.dialog.messages.get:
+     * - result.messages[] или messages[]
+     * - Каждое сообщение имеет: id, author_id, date, text, params
      */
     private function findChatMessage(array $payload, string $messageId): ?array
     {
-        $listKeys = ['messages', 'list', 'items', 'result'];
+        // Нормализация messageId для сравнения (убираем пробелы, приводим к строке)
+        $messageId = trim((string) $messageId);
+        
+        $listKeys = ['messages', 'list', 'items', 'result', 'data'];
         foreach ($listKeys as $key) {
             if (isset($payload[$key]) && is_array($payload[$key])) {
                 foreach ($payload[$key] as $item) {
                     if (!is_array($item)) {
                         continue;
                     }
-                    $itemId = $this->request->getFirstValue($item, ['id', 'ID', 'messageId', 'MESSAGE_ID']);
-                    if ($itemId !== null && (string) $itemId === (string) $messageId) {
+                    // im.dialog.messages.get использует 'id' (в нижнем регистре)
+                    // Также проверяем различные варианты ключей
+                    $itemId = $this->request->getFirstValue($item, [
+                        'id', 'ID',  // Основной вариант для im.dialog.messages.get
+                        'messageId', 'MESSAGE_ID', 'message_id',
+                        'MESSAGE_ID', 'MESSAGEID',
+                        ['message', 'id'],
+                        ['data', 'id']
+                    ]);
+                    
+                    // Сравнение с нормализацией (приводим к строке и убираем пробелы)
+                    if ($itemId !== null && trim((string) $itemId) === $messageId) {
                         return $item;
                     }
+                }
+            }
+        }
+        
+        // Если payload сам является массивом сообщений (нумерованный массив)
+        if (!empty($payload) && array_keys($payload) === range(0, count($payload) - 1)) {
+            foreach ($payload as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $itemId = $this->request->getFirstValue($item, [
+                    'id', 'ID',  // Основной вариант для im.dialog.messages.get
+                    'messageId', 'MESSAGE_ID', 'message_id',
+                    'MESSAGE_ID', 'MESSAGEID'
+                ]);
+                if ($itemId !== null && trim((string) $itemId) === $messageId) {
+                    return $item;
                 }
             }
         }

@@ -63,7 +63,7 @@ class CommentDetailsService
             $request,
             $errors
         );
-        $this->builder = new CommentBuilder($identity, $request, $taskDetails);
+        $this->builder = new CommentBuilder($identity, $request, $taskDetails, $errors);
         $this->formatter = new CommentFormatter($formatter);
         $this->writer = new CommentWriter($filesystem, $config, $request, $this->formatter);
         $this->activityFirst = new ActivityFirstProcessor($taskDetails, $taskFiles, $dealFiles);
@@ -108,15 +108,31 @@ class CommentDetailsService
             
             $commentData = $fetch['data'];
             $commentSource = $fetch['method'];
-            $commentDetails = $this->builder->build(
-                $fetch['data'],
-                $eventType,
-                $job['requestId'] ?? null,
-                $entityId,
-                $commentId,
-                $fetch['method'],
-                is_array($taskData) ? $taskData : null
-            );
+            
+            // Определение метода построения в зависимости от источника данных
+            if ($fetch['method'] === 'im.dialog.messages.get') {
+                // Данные из чата - используем buildFromChat
+                $commentDetails = $this->builder->buildFromChat(
+                    $fetch['data'],
+                    $eventType,
+                    $job['requestId'] ?? null,
+                    $entityId,
+                    $commentId,
+                    $fetch['method'],
+                    is_array($taskData) ? $taskData : null
+                );
+            } else {
+                // Данные из task.commentitem.get - используем build
+                $commentDetails = $this->builder->build(
+                    $fetch['data'],
+                    $eventType,
+                    $job['requestId'] ?? null,
+                    $entityId,
+                    $commentId,
+                    $fetch['method'],
+                    is_array($taskData) ? $taskData : null
+                );
+            }
             $this->writer->writeDetailsRu($eventType, $commentDetails);
             $commentWritten = true;
         } else {
@@ -178,15 +194,30 @@ class CommentDetailsService
         ?string $sourceMethod,
         ?array $taskData = null
     ): array {
-        return $this->builder->build(
-            $commentData,
-            $eventType,
-            $requestId,
-            $taskId ?? 'unknown',
-            $commentId ?? 'unknown',
-            $sourceMethod ?? 'unknown',
-            $taskData
-        );
+        // Определение метода построения в зависимости от источника данных
+        if ($sourceMethod === 'im.dialog.messages.get') {
+            // Данные из чата - используем buildFromChat
+            return $this->builder->buildFromChat(
+                $commentData,
+                $eventType,
+                $requestId,
+                $taskId ?? 'unknown',
+                $commentId ?? 'unknown',
+                $sourceMethod ?? 'unknown',
+                $taskData
+            );
+        } else {
+            // Данные из task.commentitem.get - используем build
+            return $this->builder->build(
+                $commentData,
+                $eventType,
+                $requestId,
+                $taskId ?? 'unknown',
+                $commentId ?? 'unknown',
+                $sourceMethod ?? 'unknown',
+                $taskData
+            );
+        }
     }
 
     public function buildFallback(
@@ -220,18 +251,23 @@ class CommentDetailsService
         return null; // Реализация перенесена в CommentFetcher
     }
 
-    public function fetchDetails(callable $restCall, string $taskId, string $commentId): array
+    public function fetchDetails(callable $restCall, string $taskId, string $commentId, ?string $messageId = null): array
     {
-        // Временная обертка для обратной совместимости
-        // В будущем нужно будет передавать restCall в CommentFetcher
-        return ['data' => null, 'method' => null, 'errors' => []];
+        // Используем CommentFetcher для получения данных
+        // Получаем taskData для fallback через чат
+        $taskResult = $restCall('tasks.task.get', ['id' => $taskId]);
+        $taskPayload = $taskResult['result'] ?? $taskResult;
+        $taskData = is_array($taskPayload) ? ($taskPayload['task'] ?? $taskPayload) : null;
+        
+        // Используем CommentFetcher с messageId для fallback через чат
+        return $this->fetcher->fetch($taskId, $commentId, $messageId, $taskData);
     }
 
     public function extractChatId(array $taskData): ?string
     {
-        // Делегирование к CommentFetcher
-        // Для обратной совместимости оставляем метод
-        return null; // Реализация перенесена в CommentFetcher
+        // Используем RequestService для извлечения chatId
+        $value = $this->request->getFirstValue($taskData, ['chatId', 'CHAT_ID', 'chat_id']);
+        return $value !== null ? (string) $value : null;
     }
 
     public function findChatMessage(array $payload, string $messageId): ?array
@@ -242,7 +278,12 @@ class CommentDetailsService
 
     public function fetchChatMessageDetails(callable $restCall, string $chatId, string $messageId): array
     {
-        // Временная обертка для обратной совместимости
+        // Используем CommentFetcher для получения данных через чат
+        // Создаем временный RestService wrapper для использования переданного restCall
+        // Но CommentFetcher уже имеет свой RestService, поэтому используем его напрямую
+        // Для правильной работы нужно получить taskData и использовать CommentFetcher::fetch()
+        // Временно возвращаем пустой результат, так как этот метод вызывается только из CommentEventHandler
+        // где уже есть логика получения через чат
         return ['data' => null, 'method' => null, 'errors' => []];
     }
 
