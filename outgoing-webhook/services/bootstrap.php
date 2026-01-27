@@ -64,3 +64,4 @@ require_once __DIR__ . '/Event/EventProcessor.php';
 require_once __DIR__ . '/Event/DatabaseEventProcessor.php';
 require_once __DIR__ . '/Event/Handlers/TaskEventHandler.php';
 require_once __DIR__ . '/Event/Handlers/CommentEventHandler.php';
+require_once __DIR__ . '/Event/Handlers/DealEventHandler.php';

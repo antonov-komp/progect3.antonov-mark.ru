@@ -15,8 +15,8 @@ class ServiceContainer
 
     public function __construct()
     {
-        // basePath должен указывать на корень outgoing-webhook, а не на services
-        $this->basePath = dirname(__DIR__, 1);
+        // basePath должен указывать на корень outgoing-webhook (services/Container -> services -> outgoing-webhook)
+        $this->basePath = dirname(__DIR__, 2);
         $this->registerFactories();
     }
 
@@ -33,6 +33,8 @@ class ServiceContainer
             $this->get('request')
         );
         $this->factories['identity'] = fn() => new EntityIdentityService($this->get('request'));
+
+        $this->factories['stateStorage'] = fn() => new StateStorage($this->basePath . '/logs/state');
         
         // Database сервисы
         $this->factories['database'] = function() {
@@ -124,9 +126,8 @@ class ServiceContainer
         // REST сервис (требует Bitrix24Client)
         $this->factories['rest'] = function() {
             // Правильный путь: из outgoing-webhook/services к app (на два уровня вверх)
-            // basePath = /var/www/progect3.antonov-mark.ru/outgoing-webhook/services
-            // dirname(..., 2) = /var/www/progect3.antonov-mark.ru
-            $appPath = dirname($this->basePath, 2) . '/app';
+            // basePath = .../outgoing-webhook; dirname(..., 1) = .../project root
+            $appPath = dirname($this->basePath, 1) . '/app';
             require_once $appPath . '/crest.php';
             require_once $appPath . '/Services/Bitrix24Client.php';
             $client = new Bitrix24Client();

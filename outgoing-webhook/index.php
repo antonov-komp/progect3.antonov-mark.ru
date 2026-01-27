@@ -76,7 +76,7 @@ try {
             }
         } catch (Throwable $e) {
             $processorType = 'error: ' . $e->getMessage();
-            $fallbackEnabled = strtolower($config->get('DATABASE_FALLBACK_TO_FILES', 'false')) === 'true';
+            $fallbackEnabled = strtolower($container->get('config')->get('DATABASE_FALLBACK_TO_FILES', 'false')) === 'true';
             
             if ($fallbackEnabled) {
                 $container->get('errors')->log('Failed to use DatabaseEventProcessor, falling back to files', [
@@ -99,7 +99,7 @@ try {
     
     // Если БД недоступна, проверяем настройку fallback
     if ($processor === null) {
-        $fallbackEnabled = strtolower($config->get('DATABASE_FALLBACK_TO_FILES', 'false')) === 'true';
+        $fallbackEnabled = strtolower($container->get('config')->get('DATABASE_FALLBACK_TO_FILES', 'false')) === 'true';
         
         if ($fallbackEnabled) {
             $processor = new EventProcessor(
@@ -139,6 +139,11 @@ try {
         $container->get('errors'),
         $container->get('config')
     );
+    $dealHandler = new DealEventHandler(
+        $container->get('rest'),
+        $container->get('stateStorage'),
+        $container->get('errors')
+    );
 
     // Валидация запроса
     $validator->validateMethod();
@@ -170,6 +175,13 @@ try {
         $eventData['entityId'],
         $requestId,
         $eventData['rawPath']
+    );
+
+    // Обработка сделок: загрузка данных + трекинг изменений (что было → что стало)
+    $dealHandler->handle(
+        $eventData['eventType'],
+        $eventData['entityId'],
+        $requestId
     );
 
     // Синхронная обработка Activity (если требуется)

@@ -28,7 +28,7 @@
  
  ## Пользовательские поля CRM
  - `ONCRMUSERFIELDADD`
- - `ONCRMUSERFIELUPDATE`
+ - `ONCRMUSERFIELDUPDATE`
  - `ONCRMUSERFIELDDELETE`
  
  ## Карта «event → REST метод»

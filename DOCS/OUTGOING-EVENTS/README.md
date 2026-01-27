@@ -40,6 +40,7 @@
 - `22-bitrix24-api-integration.md` — интеграция с Bitrix24 REST API.
 - `23-file-structure.md` — структура файлов и директорий модуля.
 - `24-refactoring-monoliths.md` — план рефакторинга монолитных частей модуля.
+- `26-deal-vs-task-levels.md` — уровни обработки: токен (события, в т.ч. сделки) vs задача (TASK).
 - `bootstrap/README.md` — разбор `outgoing-webhook/bootstrap.php` по разделам.
 - `documentation-plan.md` — план дополнительной документации модуля (пробелы и приоритеты).
  
@@ -60,3 +61,4 @@
   - **Средний приоритет:** `07-enrichment-services.md`, `09-task-services.md`, `11-enrichment-detailed.md`, `13-activity-first-sync.md`, `18-error-handling.md`, `19-security.md`
   - **Низкий приоритет:** `12-state-tracking.md`, `14-tools-allowed-events.md`, `15-tools-test-events.md`, `16-tools-queue-processors.md`, `20-performance-metrics.md`, `21-testing.md`, `22-bitrix24-api-integration.md`, `23-file-structure.md`
 - 2026-01-27 (UTC+03:00, Брест): создан документ `24-refactoring-monoliths.md` с планом рефакторинга монолитных частей модуля.
+- 2026-01-27 (UTC+03:00, Брест): создан документ `26-deal-vs-task-levels.md` — сводка по уровню токена (DEAL) и уровню задачи (TASK); исправлена опечатка в `02-registered-events.md` (ONCRMUSERFIELDUPDATE).

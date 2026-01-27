@@ -136,8 +136,9 @@ function testTokenEventsListFiles(string $dir): array
     return $files;
 }
 
-$options = getopt('', ['endpoint::', 'event::', 'events::', 'timeout::', 'report::', 'cleanup', 'cleanup-logs']);
+$options = getopt('', ['endpoint::', 'event::', 'events::', 'timeout::', 'report::', 'cleanup', 'cleanup-logs', 'deal-id::']);
 $endpoint = $options['endpoint'] ?? 'http://localhost/outgoing-webhook/index.php';
+$dealId = isset($options['deal-id']) ? trim((string) $options['deal-id']) : null;
 $timeout = isset($options['timeout']) ? (int) $options['timeout'] : 10;
 if ($timeout <= 0) {
     $timeout = 10;
@@ -192,6 +193,10 @@ foreach ($events as $event) {
         ];
     }
 
+    $data = [];
+    if ($dealId !== null && $dealId !== '' && str_starts_with($event, 'ONCRMDEAL')) {
+        $data = ['FIELDS' => ['ID' => $dealId]];
+    }
     $payload = [
         'event' => $event,
         'event_handler_id' => 'test-handler',
@@ -200,7 +205,7 @@ foreach ($events as $event) {
             'application_token' => $token,
             'member_id' => 'test-member',
         ],
-        'data' => [],
+        'data' => $data,
     ];
     $response = testTokenEventsRequest($endpoint, $payload, $timeout);
     $report['results'][] = [
@@ -235,6 +240,24 @@ if ($cleanupLogs) {
             testTokenEventsTruncateFile($eventLogPath, $size);
         }
     }
+}
+
+$has404 = false;
+$has403 = false;
+foreach ($report['results'] as $r) {
+    $s = isset($r['status']) ? (int) $r['status'] : 0;
+    if ($s === 404) {
+        $has404 = true;
+    }
+    if ($s === 403) {
+        $has403 = true;
+    }
+}
+if ($has404) {
+    $report['hint'] = '404: endpoint not found. Use --endpoint with your webhook URL. If docroot is public/, use https://your-domain/outgoing-webhook/index.php (no /public/ in path).';
+}
+if ($has403 && !$has404) {
+    $report['hint'] = '403: invalid_token or ip_not_allowed. Check OUTGOING_WEBHOOK_TOKEN in config and OUTGOING_WEBHOOK_ALLOWED_IPS if set.';
 }
 
 if (isset($options['report']) && is_string($options['report']) && $options['report'] !== '') {
