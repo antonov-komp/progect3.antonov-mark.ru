@@ -15,18 +15,21 @@ class CommentWriter
     private ConfigService $config;
     private RequestService $request;
     private CommentFormatter $formatter;
+    private ?CommentDetailsRepository $commentDetailsRepository;
     private string $basePath;
 
     public function __construct(
         FilesystemService $filesystem,
         ConfigService $config,
         RequestService $request,
-        CommentFormatter $formatter
+        CommentFormatter $formatter,
+        ?CommentDetailsRepository $commentDetailsRepository = null
     ) {
         $this->filesystem = $filesystem;
         $this->config = $config;
         $this->request = $request;
         $this->formatter = $formatter;
+        $this->commentDetailsRepository = $commentDetailsRepository;
         $this->basePath = dirname(__DIR__, 3);
     }
 
@@ -44,7 +47,41 @@ class CommentWriter
         
         $formatted = $this->formatter->formatDetailsRu($details);
         
+        // Запись в файл (для обратной совместимости)
         $this->filesystem->appendLine($eventDir . '/comment-details.log', $formatted);
+
+        // Запись в БД (если репозиторий доступен)
+        if ($this->commentDetailsRepository !== null) {
+            // Извлекаем данные из структуры details
+            $taskId = $details['taskId'] ?? null;
+            $commentId = $details['commentId'] ?? null;
+            $requestId = $details['requestId'] ?? null;
+            
+            // Если не найдено напрямую, пробуем извлечь из вложенных структур
+            if ($taskId === null) {
+                $taskId = $details['task']['id'] ?? $details['task']['ID'] ?? null;
+            }
+            if ($commentId === null) {
+                $commentId = $details['comment']['id'] ?? $details['comment']['ID'] ?? null;
+            }
+            
+            if ($taskId !== null && $commentId !== null && $requestId !== null) {
+                $detailsData = [
+                    'requestId' => $requestId,
+                    'eventType' => $eventType,
+                    'taskId' => (string) $taskId,
+                    'commentId' => (string) $commentId,
+                    'details' => $details,
+                    'formattedDetails' => $formatted,
+                    'createdAt' => $this->request->now(),
+                ];
+                
+                $id = $this->commentDetailsRepository->create($detailsData);
+                if ($id === null) {
+                    // Ошибка уже залогирована в репозитории
+                }
+            }
+        }
     }
 
     /**

@@ -11,25 +11,28 @@ declare(strict_types=1);
  */
 class EventProcessor
 {
-    private RequestService $request;
-    private EntityIdentityService $identity;
-    private FilesystemService $filesystem;
-    private ErrorService $errors;
-    private LogValueFormatter $formatter;
-    private string $basePath;
+    protected RequestService $request;
+    protected EntityIdentityService $identity;
+    protected FilesystemService $filesystem;
+    protected ErrorService $errors;
+    protected LogValueFormatter $formatter;
+    protected ConfigService $config;
+    protected string $basePath;
 
     public function __construct(
         RequestService $request,
         EntityIdentityService $identity,
         FilesystemService $filesystem,
         ErrorService $errors,
-        LogValueFormatter $formatter
+        LogValueFormatter $formatter,
+        ConfigService $config
     ) {
         $this->request = $request;
         $this->identity = $identity;
         $this->filesystem = $filesystem;
         $this->errors = $errors;
         $this->formatter = $formatter;
+        $this->config = $config;
         $this->basePath = dirname(__DIR__, 2);
     }
 
@@ -54,16 +57,21 @@ class EventProcessor
         // Логирование
         $rawPath = $this->logEvent($eventType, $entityType, $entityId, $requestId, $clientIp, $authInfo, $payload);
         
-        // Создание задачи в очереди
-        $queueItem = $this->createQueueItem(
-            $requestId,
-            $eventType,
-            $entityType,
-            $entityId,
-            $authInfo,
-            $payload,
-            $rawPath
-        );
+        // Создание задачи в очереди (только если очередь включена)
+        $queueItem = null;
+        $queueEnabled = strtolower($this->config->get('QUEUE_ENABLED', 'false')) === 'true';
+        
+        if ($queueEnabled) {
+            $queueItem = $this->createQueueItem(
+                $requestId,
+                $eventType,
+                $entityType,
+                $entityId,
+                $authInfo,
+                $payload,
+                $rawPath
+            );
+        }
         
         return [
             'eventType' => $eventType,
@@ -74,7 +82,7 @@ class EventProcessor
         ];
     }
 
-    private function logEvent(
+    protected function logEvent(
         string $eventType,
         string $entityType,
         ?string $entityId,
@@ -123,7 +131,7 @@ class EventProcessor
         return $rawPath;
     }
 
-    private function createQueueItem(
+    protected function createQueueItem(
         string $requestId,
         string $eventType,
         string $entityType,

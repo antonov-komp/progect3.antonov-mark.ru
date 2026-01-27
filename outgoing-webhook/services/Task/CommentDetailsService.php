@@ -25,6 +25,7 @@ class CommentDetailsService
     private TaskDetailsService $taskDetails;
     private RequestService $request;
     private ConfigService $config;
+    private ?CommentDetailsRepository $commentDetailsRepository;
 
     public function __construct(
         ?RestService $rest,
@@ -36,7 +37,8 @@ class CommentDetailsService
         RequestService $request,
         LogValueFormatter $formatter,
         FilesystemService $filesystem,
-        ConfigService $config
+        ConfigService $config,
+        ?CommentDetailsRepository $commentDetailsRepository = null
     ) {
         $this->rest = $rest;
         $this->errors = $errors;
@@ -44,6 +46,7 @@ class CommentDetailsService
         $this->taskDetails = $taskDetails;
         $this->request = $request;
         $this->config = $config;
+        $this->commentDetailsRepository = $commentDetailsRepository;
         
         // Инициализация специализированных классов
         // CommentFetcher требует RestService, но может быть null
@@ -66,7 +69,7 @@ class CommentDetailsService
         );
         $this->builder = new CommentBuilder($identity, $request, $taskDetails, $errors);
         $this->formatter = new CommentFormatter($formatter);
-        $this->writer = new CommentWriter($filesystem, $config, $request, $this->formatter);
+        $this->writer = new CommentWriter($filesystem, $config, $request, $this->formatter, $commentDetailsRepository);
         $this->activityFirst = new ActivityFirstProcessor($taskDetails, $taskFiles, $dealFiles); // Для обратной совместимости
         $this->activityProcessor = new ActivityProcessor($taskDetails, $taskFiles, $dealFiles);
     }

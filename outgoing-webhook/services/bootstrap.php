@@ -33,6 +33,7 @@ require_once __DIR__ . '/Enrichment/EntityHandlers/CompanyHandler.php';
 require_once __DIR__ . '/Enrichment/EnrichmentService.php';
 require_once __DIR__ . '/Queue/QueueJob.php';
 require_once __DIR__ . '/Queue/QueueService.php';
+require_once __DIR__ . '/Queue/DatabaseQueueService.php';
 require_once __DIR__ . '/Queue/JobStateService.php';
 require_once __DIR__ . '/Queue/QueueRunner.php';
 require_once __DIR__ . '/Task/TaskDetailsService.php';
@@ -47,10 +48,19 @@ require_once __DIR__ . '/Task/Activity/ActivityConfigService.php';
 require_once __DIR__ . '/Task/Comment/ActivityProcessor.php';
 require_once __DIR__ . '/Task/CommentDetailsService.php';
 
+// Database сервисы
+require_once __DIR__ . '/Database/DatabaseService.php';
+require_once __DIR__ . '/Database/Repositories/EventRepository.php';
+require_once __DIR__ . '/Database/Repositories/QueueRepository.php';
+require_once __DIR__ . '/Database/Repositories/TaskDetailsRepository.php';
+require_once __DIR__ . '/Database/Repositories/CommentDetailsRepository.php';
+require_once __DIR__ . '/Database/Repositories/EntityStateRepository.php';
+
 // Контейнер и компоненты рефакторинга
 require_once __DIR__ . '/Container/ServiceContainer.php';
 require_once __DIR__ . '/Http/RequestValidator.php';
 require_once __DIR__ . '/Security/AuthMiddleware.php';
 require_once __DIR__ . '/Event/EventProcessor.php';
+require_once __DIR__ . '/Event/DatabaseEventProcessor.php';
 require_once __DIR__ . '/Event/Handlers/TaskEventHandler.php';
 require_once __DIR__ . '/Event/Handlers/CommentEventHandler.php';

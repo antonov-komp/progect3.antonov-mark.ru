@@ -6,13 +6,19 @@ class TaskDetailsService
     private FilesystemService $filesystem;
     private RequestService $request;
     private LogValueFormatter $formatter;
+    private ?TaskDetailsRepository $taskDetailsRepository;
     private string $basePath;
 
-    public function __construct(FilesystemService $filesystem, RequestService $request, LogValueFormatter $formatter)
-    {
+    public function __construct(
+        FilesystemService $filesystem, 
+        RequestService $request, 
+        LogValueFormatter $formatter,
+        ?TaskDetailsRepository $taskDetailsRepository = null
+    ) {
         $this->filesystem = $filesystem;
         $this->request = $request;
         $this->formatter = $formatter;
+        $this->taskDetailsRepository = $taskDetailsRepository;
         $this->basePath = dirname(__DIR__, 2);
     }
 
@@ -94,9 +100,33 @@ class TaskDetailsService
             return;
         }
 
+        // Запись в файл (для обратной совместимости)
         $eventDir = $this->basePath . '/logs/' . $eventType;
         $this->filesystem->ensureDir($eventDir);
-        $this->filesystem->appendLine($eventDir . '/task-details.log', $this->formatDetailsRu($details));
+        $formattedDetails = $this->formatDetailsRu($details);
+        $this->filesystem->appendLine($eventDir . '/task-details.log', $formattedDetails);
+
+        // Запись в БД (если репозиторий доступен)
+        if ($this->taskDetailsRepository !== null) {
+            $taskId = $details['taskId'] ?? $details['id'] ?? null;
+            $requestId = $details['requestId'] ?? null;
+            
+            if ($taskId !== null && $requestId !== null) {
+                $detailsData = [
+                    'requestId' => $requestId,
+                    'eventType' => $eventType,
+                    'taskId' => (string) $taskId,
+                    'details' => $details,
+                    'formattedDetails' => $formattedDetails,
+                    'createdAt' => $this->request->now(),
+                ];
+                
+                $id = $this->taskDetailsRepository->create($detailsData);
+                if ($id === null) {
+                    // Ошибка уже залогирована в репозитории
+                }
+            }
+        }
     }
 
     public function extractMeta(?array $taskData): array

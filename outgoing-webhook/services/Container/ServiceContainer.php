@@ -34,12 +34,86 @@ class ServiceContainer
         );
         $this->factories['identity'] = fn() => new EntityIdentityService($this->get('request'));
         
-        // Сервисы для работы с задачами
-        $this->factories['taskDetails'] = fn() => new TaskDetailsService(
-            $this->get('filesystem'),
-            $this->get('request'),
-            $this->get('formatter')
+        // Database сервисы
+        $this->factories['database'] = function() {
+            // Проверка наличия расширения PDO_SQLITE
+            if (!extension_loaded('pdo_sqlite')) {
+                // Логируем, но не бросаем исключение - система будет использовать файлы
+                $this->get('errors')->log('PDO_SQLITE extension not loaded for web server', [
+                    'message' => 'Database services will not be available. Install php8.3-sqlite3 and restart PHP-FPM.',
+                    'available_drivers' => implode(', ', PDO::getAvailableDrivers()),
+                ]);
+                return null; // Вернем null, чтобы репозитории не создавались
+            }
+            
+            $config = $this->get('config');
+            $dbPath = $config->get('DATABASE_PATH', $this->basePath . '/database/events.db');
+            $walEnabled = $config->get('DATABASE_WAL_ENABLED', 'true') === 'true';
+            
+            try {
+                // Инициализация схемы БД при первом подключении
+                $database = new DatabaseService($dbPath, $this->get('errors'), $walEnabled);
+                
+                // Если БД не существует, инициализируем схему
+                if (!$database->exists()) {
+                    $schemaPath = $this->basePath . '/database/schema.sqlite.sql';
+                    if (file_exists($schemaPath)) {
+                        $database->initializeSchema($schemaPath);
+                    }
+                }
+                
+                return $database;
+            } catch (Throwable $e) {
+                $this->get('errors')->log('Failed to initialize database', [
+                    'error' => $e->getMessage(),
+                    'path' => $dbPath,
+                ]);
+                // Не бросаем исключение, возвращаем null для fallback на файлы
+                return null;
+            }
+        };
+        
+        $this->factories['eventRepository'] = function() {
+            $database = $this->get('database');
+            if ($database === null) {
+                return null; // БД недоступна
+            }
+            return new EventRepository($database, $this->get('errors'));
+        };
+        
+        $this->factories['queueRepository'] = function() {
+            $database = $this->get('database');
+            if ($database === null) {
+                return null; // БД недоступна
+            }
+            return new QueueRepository($database, $this->get('errors'));
+        };
+        
+        $this->factories['taskDetailsRepository'] = fn() => new TaskDetailsRepository(
+            $this->get('database'),
+            $this->get('errors')
         );
+        
+        $this->factories['commentDetailsRepository'] = fn() => new CommentDetailsRepository(
+            $this->get('database'),
+            $this->get('errors')
+        );
+        
+        $this->factories['entityStateRepository'] = fn() => new EntityStateRepository(
+            $this->get('database'),
+            $this->get('errors')
+        );
+        
+        // Сервисы для работы с задачами
+        $this->factories['taskDetails'] = function() {
+            $taskDetailsRepo = $this->has('taskDetailsRepository') ? $this->get('taskDetailsRepository') : null;
+            return new TaskDetailsService(
+                $this->get('filesystem'),
+                $this->get('request'),
+                $this->get('formatter'),
+                $taskDetailsRepo
+            );
+        };
         $this->factories['taskFiles'] = fn() => new TaskFilesService();
         $this->factories['dealFiles'] = fn() => new DealFileService(
             $this->get('filesystem'),
@@ -64,18 +138,22 @@ class ServiceContainer
         };
         
         // CommentDetailsService (может быть null для rest)
-        $this->factories['commentDetails'] = fn() => new CommentDetailsService(
-            $this->get('rest'),
-            $this->get('errors'),
-            $this->get('taskDetails'),
-            $this->get('taskFiles'),
-            $this->get('dealFiles'),
-            $this->get('identity'),
-            $this->get('request'),
-            $this->get('formatter'),
-            $this->get('filesystem'),
-            $this->get('config')
-        );
+        $this->factories['commentDetails'] = function() {
+            $commentDetailsRepo = $this->has('commentDetailsRepository') ? $this->get('commentDetailsRepository') : null;
+            return new CommentDetailsService(
+                $this->get('rest'),
+                $this->get('errors'),
+                $this->get('taskDetails'),
+                $this->get('taskFiles'),
+                $this->get('dealFiles'),
+                $this->get('identity'),
+                $this->get('request'),
+                $this->get('formatter'),
+                $this->get('filesystem'),
+                $this->get('config'),
+                $commentDetailsRepo
+            );
+        };
     }
 
     public function get(string $key)
