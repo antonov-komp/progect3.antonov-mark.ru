@@ -34,7 +34,13 @@ class ServiceContainer
         );
         $this->factories['identity'] = fn() => new EntityIdentityService($this->get('request'));
 
-        $this->factories['stateStorage'] = fn() => new StateStorage($this->basePath . '/logs/state');
+        $this->factories['stateStorage'] = function() {
+            $stateDir = $this->basePath . '/logs/state';
+            $entityRepo = $this->has('entityStateRepository') ? $this->get('entityStateRepository') : null;
+            $changesRepo = $this->has('entityFieldChangesRepository') ? $this->get('entityFieldChangesRepository') : null;
+            $dealResolver = $this->has('dealFieldsResolver') ? $this->get('dealFieldsResolver') : null;
+            return new StateStorage($stateDir, $entityRepo, $changesRepo, $dealResolver);
+        };
         
         // Database сервисы
         $this->factories['database'] = function() {
@@ -100,11 +106,30 @@ class ServiceContainer
             $this->get('database'),
             $this->get('errors')
         );
+
+        $this->factories['dealDetailsRepository'] = function() {
+            $db = $this->get('database');
+            if ($db === null) {
+                return null;
+            }
+            return new DealDetailsRepository($db, $this->get('errors'));
+        };
         
-        $this->factories['entityStateRepository'] = fn() => new EntityStateRepository(
-            $this->get('database'),
-            $this->get('errors')
-        );
+        $this->factories['entityStateRepository'] = function() {
+            $db = $this->get('database');
+            if ($db === null) {
+                return null;
+            }
+            return new EntityStateRepository($db, $this->get('errors'));
+        };
+
+        $this->factories['entityFieldChangesRepository'] = function() {
+            $db = $this->get('database');
+            if ($db === null) {
+                return null;
+            }
+            return new EntityFieldChangesRepository($db, $this->get('errors'));
+        };
         
         // Сервисы для работы с задачами
         $this->factories['taskDetails'] = function() {
@@ -121,6 +146,27 @@ class ServiceContainer
             $this->get('filesystem'),
             $this->get('request'),
             $this->get('taskFiles')
+        );
+
+        $this->factories['dicts'] = fn() => new DictCacheService(
+            $this->get('rest'),
+            $this->get('errors'),
+            $this->basePath . '/logs/dicts'
+        );
+
+        $this->factories['userResolver'] = fn() => new UserResolver($this->get('dicts'));
+
+        $this->factories['dealFieldsResolver'] = fn() => new DealFieldsResolver(
+            $this->get('dicts'),
+            $this->get('userResolver')
+        );
+
+        $this->factories['dealDetails'] = fn() => new DealDetailsService(
+            $this->get('filesystem'),
+            $this->get('request'),
+            $this->get('formatter'),
+            $this->get('dealDetailsRepository'),
+            $this->get('dealFieldsResolver')
         );
         
         // REST сервис (требует Bitrix24Client)

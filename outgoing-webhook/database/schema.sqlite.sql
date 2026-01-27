@@ -70,6 +70,33 @@ CREATE INDEX IF NOT EXISTS idx_comment_details_task_id ON comment_details(task_i
 CREATE INDEX IF NOT EXISTS idx_comment_details_comment_id ON comment_details(comment_id);
 CREATE INDEX IF NOT EXISTS idx_comment_details_event_type_task_id ON comment_details(event_type, task_id);
 
+-- Таблица деталей сделок (crm.deal.get по каждому событию)
+CREATE TABLE IF NOT EXISTS deal_details (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    deal_id TEXT NOT NULL,
+    details TEXT NOT NULL, -- JSON: полный ответ crm.deal.get
+    details_resolved TEXT, -- JSON: [{code, title, type, raw, display}, ...] пользовательское представление
+    formatted_details TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    -- Ключевые поля (отдельные столбцы)
+    stage_id TEXT,
+    stage_title TEXT,
+    category_id TEXT,
+    category_title TEXT,
+    assigned_by_id TEXT,
+    assigned_by_name TEXT,
+    modify_by_id TEXT,
+    modify_by_name TEXT,
+    FOREIGN KEY (request_id) REFERENCES events(request_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_deal_details_request_id ON deal_details(request_id);
+CREATE INDEX IF NOT EXISTS idx_deal_details_event_type ON deal_details(event_type);
+CREATE INDEX IF NOT EXISTS idx_deal_details_deal_id ON deal_details(deal_id);
+CREATE INDEX IF NOT EXISTS idx_deal_details_event_type_deal_id ON deal_details(event_type, deal_id);
+
 -- Таблица обогащенных данных
 CREATE TABLE IF NOT EXISTS enriched_data (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -137,6 +164,23 @@ CREATE TABLE IF NOT EXISTS entity_states (
 CREATE INDEX IF NOT EXISTS idx_entity_states_entity_type ON entity_states(entity_type);
 CREATE INDEX IF NOT EXISTS idx_entity_states_entity_id ON entity_states(entity_id);
 CREATE INDEX IF NOT EXISTS idx_entity_states_entity_type_id ON entity_states(entity_type, entity_id);
+
+-- Таблица изменений полей сущностей (что было → что стало)
+CREATE TABLE IF NOT EXISTS entity_field_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    changed_at TEXT NOT NULL,
+    changes TEXT NOT NULL, -- JSON: { "FIELD": { "old": ..., "new": ... }, ... }
+    changes_resolved TEXT, -- JSON: { "FIELD": { "title": "...", "old_display": "...", "new_display": "..." }, ... } пользовательские значения
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_entity_field_changes_entity_type ON entity_field_changes(entity_type);
+CREATE INDEX IF NOT EXISTS idx_entity_field_changes_entity_id ON entity_field_changes(entity_id);
+CREATE INDEX IF NOT EXISTS idx_entity_field_changes_entity_type_id ON entity_field_changes(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_entity_field_changes_changed_at ON entity_field_changes(changed_at);
 
 -- Таблица метрик ActivityFirst
 CREATE TABLE IF NOT EXISTS activity_first_metrics (

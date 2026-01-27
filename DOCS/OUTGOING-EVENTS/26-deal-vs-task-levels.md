@@ -79,13 +79,20 @@
 - **DealEventHandler** — обрабатывает `ONCRMDEALADD` и `ONCRMDEALUPDATE`.
 - Для каждого события: `crm.deal.get` → актуальные данные сделки.
 - **StateStorage::detectFieldChanges** сравнивает с предыдущим снимком:
-  - если есть «предыдущее» состояние — пишет в `logs/field-changes/` diff по полям (`old` / `new`);
-  - обновляет снимок в `logs/state/deal_{id}.json`.
+  - если есть «предыдущее» состояние — сохраняет diff по полям (`old` / `new`);
+  - обновляет снимок.
 
-**Файлы:**
+**Хранение:** при `DATABASE_TYPE=sqlite` данные пишутся в **БД** (та же `events.db`):
 
-| Что | Где |
-|-----|-----|
+| Что | ГДЕ (БД) |
+|-----|----------|
+| Снимок сделки | Таблица `entity_states` (поле `state` — JSON) |
+| Изменения полей | Таблица `entity_field_changes` (поле `changes` — JSON) |
+
+Если БД недоступна, используется **файловый** fallback:
+
+| Что | Где (файлы) |
+|-----|-------------|
 | Снимок сделки | `outgoing-webhook/logs/state/deal_{id}.json` |
 | Изменения полей | `outgoing-webhook/logs/field-changes/deal_{id}_{Ymd_His}.json` |
 | Лог изменений | `outgoing-webhook/logs/field-changes/field-changes.log` |
@@ -99,7 +106,9 @@ php outgoing-webhook/tools/test-token-events.php --event=ONCRMDEALUPDATE --deal-
   --endpoint="https://progect3.antonov-mark.ru/outgoing-webhook/index.php"
 ```
 
-После ADD появляется `state/deal_13177.json`. После UPDATE, если поля менялись — записи в `field-changes/`.
+После ADD появляется снимок в `entity_states`. После UPDATE, если поля менялись — записи в `entity_field_changes`. Статистика: `php outgoing-webhook/tools/check-db-stats.php` (блоки «Снимки сущностей», «Изменения полей»).
+
+**Полная проверка (чек-лист + скрипт):** см. `27-verify-deal-tracking.md` и `php outgoing-webhook/tools/verify-deal-tracking.php --deal-id=13177 --endpoint="https://.../outgoing-webhook/index.php"`.
 
 ---
 
@@ -111,7 +120,8 @@ php outgoing-webhook/tools/test-token-events.php --event=ONCRMDEALUPDATE --deal-
 | Очередь (при включённой) | ✅ | ✅ |
 | Обогащение (REST) | `tasks.task.get` | `crm.deal.get` |
 | `enriched.json` | ✅ | ✅ |
-| `task-details.log` / БД task_details | ✅ | ❌ (нет «deal details») |
+| `task-details.log` / БД task_details | ✅ | ❌ |
+| `deal-details.log` / БД deal_details | ❌ | ✅ (crm.deal.get по каждому событию) |
 | `comment-details` / Activity | Только ONTASKCOMMENTADD | ❌ |
 | Трекинг изменений (`detectFieldChanges`) | ✅ | ✅ |
 | Отдельный handler в `index.php` | TaskEventHandler, CommentEventHandler | **DealEventHandler** (ADD/UPDATE) |
@@ -147,6 +157,8 @@ php outgoing-webhook/tools/test-token-events.php --event=ONCRMDEALUPDATE --deal-
 ## 6. Исправления в репозитории (2026-01-27)
 
 - В `02-registered-events.md`: опечатка `ONCRMUSERFIELUPDATE` → `ONCRMUSERFIELDUPDATE`, выравнивание формата списка для `ONTASKCOMMENTADD`.
+- Трекинг сделок: снимки и изменения полей сохраняются в **БД** (`entity_states`, `entity_field_changes`), если `DATABASE_TYPE=sqlite`. Иначе — файлы `logs/state/`, `logs/field-changes/`.
+- Детали сделок: по каждому `ONCRMDEALADD` / `ONCRMDEALUPDATE` выполняется **дозапрос** `crm.deal.get`, результат пишется в `deal_details` и в `logs/.../deal-details.log`. В `deal_details.details_resolved` хранится **пользовательское представление** полей. Отдельные столбцы для **ключевых полей**: `stage_id` / `stage_title` (тег + расшифровка), `category_id` / `category_title` (воронка), `assigned_by_id` / `assigned_by_name`, `modify_by_id` / `modify_by_name` (ответственный и кто изменил — «Имя Фамилия» + ID через `user.get`). Утилиты: `show-deal-resolved.php`, `check-db-stats.php`.
 
 ---
 
@@ -158,6 +170,13 @@ php outgoing-webhook/tools/test-token-events.php --event=ONCRMDEALUPDATE --deal-
 - `outgoing-webhook/services/Identity/EntityIdentityService.php` — `resolveEntityType`, `extractEntityId`  
 - `outgoing-webhook/services/Enrichment/EnrichmentService.php` — `resolveMethod`, `buildEnriched`  
 - `outgoing-webhook/services/Enrichment/EntityHandlers/DealHandler.php`  
+- `outgoing-webhook/services/Enrichment/StateStorage.php` — `detectFieldChanges` (БД или файлы)
+- `outgoing-webhook/services/Database/Repositories/EntityStateRepository.php` — снимки в БД
+- `outgoing-webhook/services/Database/Repositories/EntityFieldChangesRepository.php` — изменения полей в БД
+- `outgoing-webhook/services/Database/Repositories/DealDetailsRepository.php` — детали сделок в БД
+- `outgoing-webhook/services/Crm/DealDetailsService.php` — форматирование и запись deal_details / deal-details.log
+- `outgoing-webhook/services/Crm/DealFieldsResolver.php` — пользовательское представление полей; `extractKeyFields` для стадии/воронки/ответственный/кто изменил
+- `outgoing-webhook/services/Crm/UserResolver.php` — `user.get` → «Имя Фамилия» + ID, кэш в dicts
 - `outgoing-webhook/services/Queue/QueueRunner.php` — обогащение, `writeDetails`, комментарии, `detectFieldChanges`  
 - `outgoing-webhook/services/Task/TaskDetailsService.php` — `writeDetails`, `writeDetailsRu`, `extractTaskData`  
 - `outgoing-webhook/tools/process-queue.php`, `process-queue-cli.php` — обработка очереди  

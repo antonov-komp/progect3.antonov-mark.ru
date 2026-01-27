@@ -142,6 +142,7 @@ try {
     $dealHandler = new DealEventHandler(
         $container->get('rest'),
         $container->get('stateStorage'),
+        $container->get('dealDetails'),
         $container->get('errors')
     );
 

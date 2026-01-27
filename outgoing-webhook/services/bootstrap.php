@@ -39,6 +39,9 @@ require_once __DIR__ . '/Queue/QueueRunner.php';
 require_once __DIR__ . '/Task/TaskDetailsService.php';
 require_once __DIR__ . '/Task/TaskFilesService.php';
 require_once __DIR__ . '/Crm/DealFileService.php';
+require_once __DIR__ . '/Crm/DealDetailsService.php';
+require_once __DIR__ . '/Crm/DealFieldsResolver.php';
+require_once __DIR__ . '/Crm/UserResolver.php';
 require_once __DIR__ . '/Task/Comment/CommentFetcher.php';
 require_once __DIR__ . '/Task/Comment/CommentBuilder.php';
 require_once __DIR__ . '/Task/Comment/CommentFormatter.php';
@@ -54,7 +57,9 @@ require_once __DIR__ . '/Database/Repositories/EventRepository.php';
 require_once __DIR__ . '/Database/Repositories/QueueRepository.php';
 require_once __DIR__ . '/Database/Repositories/TaskDetailsRepository.php';
 require_once __DIR__ . '/Database/Repositories/CommentDetailsRepository.php';
+require_once __DIR__ . '/Database/Repositories/DealDetailsRepository.php';
 require_once __DIR__ . '/Database/Repositories/EntityStateRepository.php';
+require_once __DIR__ . '/Database/Repositories/EntityFieldChangesRepository.php';
 
 // Контейнер и компоненты рефакторинга
 require_once __DIR__ . '/Container/ServiceContainer.php';

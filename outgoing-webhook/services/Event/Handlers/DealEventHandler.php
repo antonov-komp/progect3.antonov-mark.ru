@@ -5,14 +5,15 @@ declare(strict_types=1);
  * Обработчик событий сделок (ONCRMDEALADD, ONCRMDEALUPDATE)
  *
  * Ответственность:
- * - Получение актуальных данных сделки через crm.deal.get
- * - Сравнение с предыдущим состоянием (что было → что стало)
- * - Запись изменений в logs/field-changes/ и обновление state
+ * - Дозапрос crm.deal.get по ID сделки
+ * - Запись деталей сделки (deal_details + deal-details.log)
+ * - Сравнение с предыдущим состоянием (что было → что стало), entity_states / entity_field_changes
  */
 class DealEventHandler
 {
     private RestService $rest;
     private StateStorage $stateStorage;
+    private DealDetailsService $dealDetails;
     private ErrorService $errors;
 
     private const SUPPORTED = ['ONCRMDEALADD', 'ONCRMDEALUPDATE'];
@@ -20,10 +21,12 @@ class DealEventHandler
     public function __construct(
         RestService $rest,
         StateStorage $stateStorage,
+        DealDetailsService $dealDetails,
         ErrorService $errors
     ) {
         $this->rest = $rest;
         $this->stateStorage = $stateStorage;
+        $this->dealDetails = $dealDetails;
         $this->errors = $errors;
     }
 
@@ -63,6 +66,7 @@ class DealEventHandler
                 return;
             }
 
+            $this->dealDetails->writeDetailsRu($eventType, $requestId, $entityId, $current);
             $this->stateStorage->detectFieldChanges('deal', $entityId, $current, $eventType);
         } catch (Throwable $e) {
             $this->errors->log('Deal handler exception', [
