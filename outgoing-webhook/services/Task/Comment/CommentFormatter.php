@@ -31,9 +31,11 @@ class CommentFormatter
             : 'нет';
 
         $activityFirst = !empty($details['activityFirst']) ? 'да' : 'нет';
+        $activityType = $details['activityType'] ?? null;
+        $activityTypeText = $activityType !== null ? $activityType : ($activityFirst === 'да' ? 'unknown' : 'нет');
 
         return sprintf(
-            'Дата=%s | requestId=%s | Событие=%s | Задача=%s | Проект=%s (%s) | CRM=%s | КомментарийID=%s | Автор=%s | Тип=%s | Создано=%s | Текст=%s | Файлы=%s | ActivityFirst=%s | Метод=%s',
+            'Дата=%s | requestId=%s | Событие=%s | Задача=%s | Проект=%s (%s) | CRM=%s | КомментарийID=%s | Автор=%s | Тип=%s | Создано=%s | Текст=%s | Файлы=%s | ActivityFirst=%s | ActivityType=%s | Метод=%s',
             $details['loggedAt'] ?? 'unknown',
             $details['requestId'] ?? 'unknown',
             $details['eventType'] ?? 'unknown',
@@ -48,6 +50,7 @@ class CommentFormatter
             $this->formatter->normalize($details['message'] ?? 'unknown'),
             $filesText,
             $activityFirst,
+            $activityTypeText,
             $details['sourceMethod'] ?? 'unknown'
         );
     }

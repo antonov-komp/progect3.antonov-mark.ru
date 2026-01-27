@@ -71,7 +71,10 @@ class CommentBuilder
         ];
 
         $details['commentKind'] = $this->resolveKind($details['authorId'] ?? null);
-        $details['activityFirst'] = $this->taskDetails->evaluateActivityFirst($details);
+        // Оценка типа Activity (новый формат)
+        $details['activityType'] = $this->taskDetails->evaluateActivity($details);
+        // Обратная совместимость: activityFirst для старых обработчиков
+        $details['activityFirst'] = $details['activityType'] !== null;
         return $details;
     }
 
@@ -209,7 +212,10 @@ class CommentBuilder
         ];
 
         $details['commentKind'] = $this->resolveKind($details['authorId'] ?? null);
-        $details['activityFirst'] = $this->taskDetails->evaluateActivityFirst($details);
+        // Оценка типа Activity (новый формат)
+        $details['activityType'] = $this->taskDetails->evaluateActivity($details);
+        // Обратная совместимость: activityFirst для старых обработчиков
+        $details['activityFirst'] = $details['activityType'] !== null;
         
         // Временное логирование для отладки
         $this->errors->log('CommentBuilder::buildFromChat - built details', [
@@ -217,6 +223,7 @@ class CommentBuilder
             'message' => $details['message'],
             'fileIds' => $details['fileIds'],
             'commentKind' => $details['commentKind'],
+            'activityType' => $details['activityType'],
         ]);
         
         return $details;

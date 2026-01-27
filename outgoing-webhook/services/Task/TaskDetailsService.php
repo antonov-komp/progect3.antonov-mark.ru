@@ -129,6 +129,10 @@ class TaskDetailsService
         ];
     }
 
+    /**
+     * @deprecated Use loadActivityConfig() instead
+     * Загрузка условий ActivityFirst (старый формат)
+     */
     public function loadActivityFirstConditions(): array
     {
         $path = $this->basePath . '/activity/first/conditions.php';
@@ -144,6 +148,17 @@ class TaskDetailsService
             'crmDealPrefix' => 'D_',
             'keywords' => [],
         ];
+    }
+
+    /**
+     * Загрузка конфигурации Activity (новый формат)
+     * 
+     * @return ActivityConfigService Сервис конфигурации Activity
+     */
+    public function loadActivityConfig(): ActivityConfigService
+    {
+        $configPath = $this->basePath . '/activity/config.php';
+        return new ActivityConfigService($configPath);
     }
 
     public function messageHasKeyword(string $message, array $keywords): bool
@@ -183,37 +198,95 @@ class TaskDetailsService
         return false;
     }
 
+    /**
+     * @deprecated Use evaluateActivity() instead
+     * Оценка условий ActivityFirst (старый формат)
+     */
     public function evaluateActivityFirst(array $details): bool
     {
-        $conditions = $this->loadActivityFirstConditions();
-        $projectId = (string) ($conditions['projectId'] ?? '');
-        $dealPrefix = (string) ($conditions['crmDealPrefix'] ?? 'D_');
-        $keywords = is_array($conditions['keywords'] ?? null) ? $conditions['keywords'] : [];
+        $activityType = $this->evaluateActivity($details);
+        return $activityType !== null;
+    }
 
+    /**
+     * Оценка условий Activity и определение типа Activity
+     * 
+     * Алгоритм:
+     * 1. Загрузить конфигурацию через ActivityConfigService
+     * 2. Для каждого типа Activity:
+     *    - Проверить проект (если задан)
+     *    - Проверить CRM-связь со сделкой
+     *    - Проверить наличие файлов
+     *    - Проверить ключевые слова в сообщении (с учетом опечаток)
+     * 3. Вернуть первый подходящий тип Activity или null
+     * 
+     * @param array $details Детали комментария
+     * @return string|null Тип Activity ('cover', 'approved_form') или null если условия не выполнены
+     */
+    public function evaluateActivity(array $details): ?string
+    {
+        $configService = $this->loadActivityConfig();
+        $commonConfig = $configService->getCommonConfig();
+        
+        $projectId = (string) ($commonConfig['projectId'] ?? '');
+        $dealPrefix = (string) ($commonConfig['crmDealPrefix'] ?? 'D_');
+        
+        // Проверка проекта
         if ($projectId !== '' && ($details['projectId'] ?? '') !== $projectId) {
-            return false;
+            return null;
         }
-
+        
+        // Проверка CRM-связи
         $crmLinks = is_array($details['crmLinks'] ?? null) ? $details['crmLinks'] : [];
         if (!$this->hasDealLink($crmLinks, $dealPrefix)) {
-            return false;
+            return null;
         }
-
-        $message = (string) ($details['message'] ?? '');
-        if ($message === '') {
-            return false;
-        }
-
-        if (!$this->messageHasKeyword($message, $keywords)) {
-            return false;
-        }
-
+        
+        // Проверка файлов
         $fileIds = $details['fileIds'] ?? [];
         if (!is_array($fileIds) || empty($fileIds)) {
-            return false;
+            return null;
         }
+        
+        // Проверка сообщения
+        $message = (string) ($details['message'] ?? '');
+        if ($message === '') {
+            return null;
+        }
+        
+        // Проверка каждого типа Activity
+        foreach ($configService->getActivityTypes() as $activityType) {
+            if ($configService->messageHasActivityKeyword($message, $activityType)) {
+                return $activityType;
+            }
+        }
+        
+        return null;
+    }
 
-        return true;
+    /**
+     * Получение поля сделки для типа Activity
+     * 
+     * @param string $activityType Тип Activity ('cover', 'approved_form')
+     * @return string Поле сделки или пустая строка если не найдено
+     */
+    public function getActivityDealField(string $activityType): string
+    {
+        $configService = $this->loadActivityConfig();
+        return $configService->getDealField($activityType);
+    }
+
+    /**
+     * Проверка наличия ключевого слова типа Activity в сообщении
+     * 
+     * @param string $message Сообщение для проверки
+     * @param string $activityType Тип Activity
+     * @return bool true если найдено ключевое слово
+     */
+    public function messageHasActivityKeyword(string $message, string $activityType): bool
+    {
+        $configService = $this->loadActivityConfig();
+        return $configService->messageHasActivityKeyword($message, $activityType);
     }
 
     public function loadCrmLinks(string $taskId, callable $restCall): array

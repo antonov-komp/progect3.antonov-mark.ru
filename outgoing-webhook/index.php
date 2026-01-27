@@ -69,7 +69,7 @@ try {
         $eventData['rawPath']
     );
 
-    // Синхронная обработка ActivityFirst (если требуется)
+    // Синхронная обработка Activity (если требуется)
     if ($needsSync) {
         $lastDetails = $commentHandler->getLastDetails();
         outgoingWebhookJsonResponse(200, ['status' => 'ok']);
@@ -78,7 +78,7 @@ try {
             fastcgi_finish_request();
             // Обработка после отправки ответа
             if ($lastDetails !== null) {
-                outgoingWebhookProcessActivityFirstSync(
+                outgoingWebhookProcessActivitySync(
                     $lastDetails,
                     $eventData['entityId'],
                     $requestId
@@ -87,7 +87,7 @@ try {
         } else {
             register_shutdown_function(function() use ($lastDetails, $eventData, $requestId) {
                 if ($lastDetails !== null) {
-                    outgoingWebhookProcessActivityFirstSync(
+                    outgoingWebhookProcessActivitySync(
                         $lastDetails,
                         $eventData['entityId'],
                         $requestId

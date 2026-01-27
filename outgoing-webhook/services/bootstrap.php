@@ -43,6 +43,8 @@ require_once __DIR__ . '/Task/Comment/CommentBuilder.php';
 require_once __DIR__ . '/Task/Comment/CommentFormatter.php';
 require_once __DIR__ . '/Task/Comment/CommentWriter.php';
 require_once __DIR__ . '/Task/Comment/ActivityFirstProcessor.php';
+require_once __DIR__ . '/Task/Activity/ActivityConfigService.php';
+require_once __DIR__ . '/Task/Comment/ActivityProcessor.php';
 require_once __DIR__ . '/Task/CommentDetailsService.php';
 
 // Контейнер и компоненты рефакторинга

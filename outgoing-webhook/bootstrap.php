@@ -129,7 +129,19 @@ function outgoingWebhookGetSyncServices(): array
 }
 
 /**
- * Синхронная обработка ActivityFirst
+ * @deprecated Use outgoingWebhookProcessActivitySync() instead
+ * Синхронная обработка ActivityFirst (старый формат)
+ */
+function outgoingWebhookProcessActivityFirstSync(
+    array $commentDetails,
+    string $taskId,
+    string $requestId
+): bool {
+    return outgoingWebhookProcessActivitySync($commentDetails, $taskId, $requestId);
+}
+
+/**
+ * Синхронная обработка Activity
  * 
  * Выполняется сразу после получения webhook-события (в фоне после отправки ответа)
  * 
@@ -138,7 +150,7 @@ function outgoingWebhookGetSyncServices(): array
  * @param string $requestId ID запроса
  * @return bool Успешность обработки
  */
-function outgoingWebhookProcessActivityFirstSync(
+function outgoingWebhookProcessActivitySync(
     array $commentDetails,
     string $taskId,
     string $requestId
@@ -149,7 +161,11 @@ function outgoingWebhookProcessActivityFirstSync(
         return false;
     }
 
-    if (empty($commentDetails['activityFirst'])) {
+    // Поддерживаем как новый формат (activityType), так и старый (activityFirst)
+    $activityType = $commentDetails['activityType'] ?? null;
+    $activityFirst = $commentDetails['activityFirst'] ?? false;
+    
+    if ($activityType === null && !$activityFirst) {
         return false;
     }
 
@@ -207,7 +223,7 @@ function outgoingWebhookProcessActivityFirstSync(
         $services['taskDetails']->markActivityFirstProcessed($requestId, $taskId);
 
         // Логирование результата
-        $services['taskDetails']->logActivityFirst([
+        $logEntry = [
             'loggedAt' => $services['request']->now(),
             'requestId' => $requestId,
             'taskId' => $taskId,
@@ -216,7 +232,17 @@ function outgoingWebhookProcessActivityFirstSync(
             'fileIds' => $result['fileIds'],
             'taskAttach' => $result['taskAttach'],
             'dealUpdates' => $result['dealUpdates'],
-        ]);
+        ];
+        
+        // Добавляем activityType и dealField если они есть (новый формат)
+        if (isset($result['activityType'])) {
+            $logEntry['activityType'] = $result['activityType'];
+        }
+        if (isset($result['dealField'])) {
+            $logEntry['dealField'] = $result['dealField'];
+        }
+        
+        $services['taskDetails']->logActivityFirst($logEntry);
 
         // Логирование метрик
         $metricsPath = __DIR__ . '/logs/activity-first-metrics.log';
@@ -231,6 +257,12 @@ function outgoingWebhookProcessActivityFirstSync(
             'dealsCount' => count($result['dealIds']),
             'rateLimitHit' => false,
         ];
+        
+        // Добавляем activityType если есть (новый формат)
+        if (isset($result['activityType'])) {
+            $metrics['activityType'] = $result['activityType'];
+        }
+        
         $services['filesystem']->appendLine($metricsPath, json_encode($metrics, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
         flock($lockHandle, LOCK_UN);
@@ -258,6 +290,13 @@ function outgoingWebhookProcessActivityFirstSync(
             'success' => false,
             'error' => $e->getMessage(),
         ];
+        
+        // Добавляем activityType если есть (новый формат)
+        $activityType = $commentDetails['activityType'] ?? null;
+        if ($activityType !== null) {
+            $metrics['activityType'] = $activityType;
+        }
+        
         $services['filesystem']->appendLine($metricsPath, json_encode($metrics, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
         flock($lockHandle, LOCK_UN);

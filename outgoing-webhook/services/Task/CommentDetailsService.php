@@ -19,7 +19,8 @@ class CommentDetailsService
     private CommentBuilder $builder;
     private CommentFormatter $formatter;
     private CommentWriter $writer;
-    private ActivityFirstProcessor $activityFirst;
+    private ActivityFirstProcessor $activityFirst; // Старый процессор для обратной совместимости
+    private ActivityProcessor $activityProcessor; // Новый процессор для работы с типами Activity
     private EntityIdentityService $identity;
     private TaskDetailsService $taskDetails;
     private RequestService $request;
@@ -66,7 +67,8 @@ class CommentDetailsService
         $this->builder = new CommentBuilder($identity, $request, $taskDetails, $errors);
         $this->formatter = new CommentFormatter($formatter);
         $this->writer = new CommentWriter($filesystem, $config, $request, $this->formatter);
-        $this->activityFirst = new ActivityFirstProcessor($taskDetails, $taskFiles, $dealFiles);
+        $this->activityFirst = new ActivityFirstProcessor($taskDetails, $taskFiles, $dealFiles); // Для обратной совместимости
+        $this->activityProcessor = new ActivityProcessor($taskDetails, $taskFiles, $dealFiles);
     }
 
     /**
@@ -168,18 +170,37 @@ class CommentDetailsService
             }
         }
 
-        // Обработка ActivityFirst (если требуется)
-        if ($commentWritten && is_array($commentDetails) && !empty($commentDetails['activityFirst'])) {
-            $result = $this->activityFirst->process($commentDetails, $entityId, $restCall);
-            $this->taskDetails->logActivityFirst([
-                'loggedAt' => $this->request->now(),
-                'requestId' => $job['requestId'] ?? 'unknown',
-                'taskId' => $entityId,
-                'dealIds' => $result['dealIds'],
-                'fileIds' => $result['fileIds'],
-                'taskAttach' => $result['taskAttach'],
-                'dealUpdates' => $result['dealUpdates'],
-            ]);
+        // Обработка Activity (если требуется)
+        if ($commentWritten && is_array($commentDetails)) {
+            $activityType = $commentDetails['activityType'] ?? null;
+            
+            if ($activityType !== null && is_string($activityType)) {
+                // Использование нового ActivityProcessor с типом Activity
+                $result = $this->activityProcessor->process($commentDetails, $activityType, $entityId, $restCall);
+                $this->taskDetails->logActivityFirst([
+                    'loggedAt' => $this->request->now(),
+                    'requestId' => $job['requestId'] ?? 'unknown',
+                    'taskId' => $entityId,
+                    'activityType' => $activityType,
+                    'dealField' => $result['dealField'],
+                    'dealIds' => $result['dealIds'],
+                    'fileIds' => $result['fileIds'],
+                    'taskAttach' => $result['taskAttach'],
+                    'dealUpdates' => $result['dealUpdates'],
+                ]);
+            } elseif (!empty($commentDetails['activityFirst'])) {
+                // Обратная совместимость: использование старого ActivityFirstProcessor
+                $result = $this->activityFirst->process($commentDetails, $entityId, $restCall);
+                $this->taskDetails->logActivityFirst([
+                    'loggedAt' => $this->request->now(),
+                    'requestId' => $job['requestId'] ?? 'unknown',
+                    'taskId' => $entityId,
+                    'dealIds' => $result['dealIds'],
+                    'fileIds' => $result['fileIds'],
+                    'taskAttach' => $result['taskAttach'],
+                    'dealUpdates' => $result['dealUpdates'],
+                ]);
+            }
         }
     }
 
@@ -332,11 +353,29 @@ class CommentDetailsService
         return $this->writer->shouldWriteEnriched($taskId);
     }
 
+    /**
+     * Обработка Activity (синхронная)
+     * 
+     * Поддерживает как новый формат (activityType), так и старый (activityFirst)
+     * 
+     * @param array $commentDetails Детали комментария
+     * @param string $entityId ID задачи
+     * @param callable $restCall Функция для REST API вызовов
+     * @return array Результат обработки
+     */
     public function processActivityFirst(
         array $commentDetails,
         string $entityId,
         callable $restCall
     ): array {
-        return $this->activityFirst->process($commentDetails, $entityId, $restCall);
+        $activityType = $commentDetails['activityType'] ?? null;
+        
+        if ($activityType !== null && is_string($activityType)) {
+            // Использование нового ActivityProcessor с типом Activity
+            return $this->activityProcessor->process($commentDetails, $activityType, $entityId, $restCall);
+        } else {
+            // Обратная совместимость: использование старого ActivityFirstProcessor
+            return $this->activityFirst->process($commentDetails, $entityId, $restCall);
+        }
     }
 }

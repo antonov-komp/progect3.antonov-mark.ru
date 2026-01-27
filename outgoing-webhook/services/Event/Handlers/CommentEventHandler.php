@@ -164,9 +164,15 @@ class CommentEventHandler
                 }
             }
 
-            // Проверка необходимости синхронной обработки ActivityFirst
-            if ($commentWritten && is_array($details) && !empty($details['activityFirst'])) {
-                return true;
+            // Проверка необходимости синхронной обработки Activity
+            // Поддерживаем как новый формат (activityType), так и старый (activityFirst)
+            if ($commentWritten && is_array($details)) {
+                $activityType = $details['activityType'] ?? null;
+                $activityFirst = $details['activityFirst'] ?? false;
+                
+                if ($activityType !== null || $activityFirst) {
+                    return true;
+                }
             }
 
             return false;
