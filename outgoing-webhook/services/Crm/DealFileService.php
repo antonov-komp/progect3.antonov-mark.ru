@@ -1,17 +1,31 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * Сервис работы с файлами в полях сделки (CRM).
+ *
+ * Важно: файлы в задачах (чат, скрепка) и файлы в сделке — разные хранилища Bitrix24.
+ * В поле сделки (UF_CRM_*) нельзя подставить fileId из задачи; нужен контент файла
+ * в формате fileData ([имя, base64]) для crm.deal.update.
+ * Здесь: получаем файл по ID (disk.file.get), по downloadUrl качаем контент, отдаём base64.
+ */
 class DealFileService
 {
     private FilesystemService $filesystem;
     private RequestService $request;
     private TaskFilesService $taskFiles;
+    private ErrorService $errors;
 
-    public function __construct(FilesystemService $filesystem, RequestService $request, TaskFilesService $taskFiles)
-    {
+    public function __construct(
+        FilesystemService $filesystem,
+        RequestService $request,
+        TaskFilesService $taskFiles,
+        ErrorService $errors
+    ) {
         $this->filesystem = $filesystem;
         $this->request = $request;
         $this->taskFiles = $taskFiles;
+        $this->errors = $errors;
     }
 
     private function resolveFileName(array $info, string $fallback, ?string $downloadUrl = null): string
@@ -95,15 +109,26 @@ class DealFileService
         return $mimeToExt[$mimeType] ?? null;
     }
 
+    /**
+     * Собрать данные файла для записи в поле сделки: [имя, base64].
+     * fileId — ID файла диска (из комментария в задаче). В сделку по ID не подставляется.
+     */
     public function buildDealFileData(string $fileId, callable $restCall): ?array
     {
         $info = $this->taskFiles->getDiskFileInfo($fileId, $restCall);
         if ($info === null) {
+            $this->errors->log('DealFileService::buildDealFileData — disk.file.get вернул пустой результат', [
+                'fileId' => $fileId,
+            ]);
             return null;
         }
 
         $downloadUrl = $info['downloadUrl'] ?? $info['DOWNLOAD_URL'] ?? null;
         if (!is_string($downloadUrl) || $downloadUrl === '') {
+            $this->errors->log('DealFileService::buildDealFileData — нет downloadUrl у файла', [
+                'fileId' => $fileId,
+                'infoKeys' => array_keys($info),
+            ]);
             return null;
         }
 
@@ -111,6 +136,10 @@ class DealFileService
         $downloadUrl = $this->request->resolveAbsoluteUrl($downloadUrl);
         $base64 = $this->filesystem->downloadBase64($downloadUrl);
         if ($base64 === null) {
+            $this->errors->log('DealFileService::buildDealFileData — не удалось загрузить файл по URL (base64 null)', [
+                'fileId' => $fileId,
+                'downloadUrl' => $downloadUrl,
+            ]);
             return null;
         }
 
@@ -322,6 +351,15 @@ class DealFileService
             }
         }
 
+        $newFilesCount = count($fileDataList);
+        if ($newFilesCount === 0) {
+            $this->errors->log('DealFileService::updateDealFiles — нет новых файлов для записи в сделку (buildDealFileData вернул null по всем fileId)', [
+                'dealId' => $dealId,
+                'field' => $field,
+                'existingCount' => count($existingIds),
+            ]);
+        }
+
         $result = $restCall('crm.deal.update', [
             'id' => (int) $dealId,
             'fields' => [
@@ -330,6 +368,13 @@ class DealFileService
         ]);
 
         if (!is_array($result) || !empty($result['error'])) {
+            $this->errors->log('DealFileService::updateDealFiles — crm.deal.update ошибка', [
+                'dealId' => $dealId,
+                'field' => $field,
+                'error' => $result['error'] ?? 'unknown',
+                'error_description' => $result['error_description'] ?? null,
+                'response' => $result,
+            ]);
             return [
                 'success' => false,
                 'error' => $result['error'] ?? 'unknown',

@@ -265,6 +265,24 @@ function outgoingWebhookProcessActivitySync(
         
         $services['filesystem']->appendLine($metricsPath, json_encode($metrics, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
+        // Запись метрик Activity в основную БД (activity_first_metrics)
+        if (outgoingWebhookContainer()->has('activityFirstMetricsRepository')) {
+            $repo = outgoingWebhookContainer()->get('activityFirstMetricsRepository');
+            if ($repo !== null) {
+                $repo->create([
+                    'request_id' => $requestId,
+                    'task_id' => $taskId,
+                    'logged_at' => $metrics['loggedAt'],
+                    'sync' => true,
+                    'duration_ms' => $durationMs,
+                    'success' => true,
+                    'files_count' => count($result['fileIds']),
+                    'deals_count' => count($result['dealIds']),
+                    'rate_limit_hit' => false,
+                ]);
+            }
+        }
+
         flock($lockHandle, LOCK_UN);
         fclose($lockHandle);
         return true;
@@ -298,6 +316,25 @@ function outgoingWebhookProcessActivitySync(
         }
         
         $services['filesystem']->appendLine($metricsPath, json_encode($metrics, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+
+        // Запись метрик Activity в основную БД (ошибка обработки)
+        if (outgoingWebhookContainer()->has('activityFirstMetricsRepository')) {
+            $repo = outgoingWebhookContainer()->get('activityFirstMetricsRepository');
+            if ($repo !== null) {
+                $repo->create([
+                    'request_id' => $requestId,
+                    'task_id' => $taskId,
+                    'logged_at' => $metrics['loggedAt'],
+                    'sync' => true,
+                    'duration_ms' => $durationMs,
+                    'success' => false,
+                    'files_count' => 0,
+                    'deals_count' => 0,
+                    'rate_limit_hit' => false,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         flock($lockHandle, LOCK_UN);
         fclose($lockHandle);

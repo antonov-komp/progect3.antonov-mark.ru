@@ -130,6 +130,14 @@ class ServiceContainer
             }
             return new EntityFieldChangesRepository($db, $this->get('errors'));
         };
+
+        $this->factories['activityFirstMetricsRepository'] = function() {
+            $db = $this->get('database');
+            if ($db === null) {
+                return null;
+            }
+            return new ActivityFirstMetricsRepository($db, $this->get('errors'));
+        };
         
         // Сервисы для работы с задачами
         $this->factories['taskDetails'] = function() {
@@ -141,11 +149,12 @@ class ServiceContainer
                 $taskDetailsRepo
             );
         };
-        $this->factories['taskFiles'] = fn() => new TaskFilesService();
+        $this->factories['taskFiles'] = fn() => new TaskFilesService($this->get('errors'));
         $this->factories['dealFiles'] = fn() => new DealFileService(
             $this->get('filesystem'),
             $this->get('request'),
-            $this->get('taskFiles')
+            $this->get('taskFiles'),
+            $this->get('errors')
         );
 
         $this->factories['dicts'] = fn() => new DictCacheService(

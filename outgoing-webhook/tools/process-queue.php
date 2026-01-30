@@ -53,8 +53,8 @@ function outgoingWebhookGetServices(): array
 
     $steps = new QueueStepLogger($logsDir . '/queue-steps.log');
     $taskDetails = new TaskDetailsService($filesystem, $request, $formatter);
-    $taskFiles = new TaskFilesService();
-    $dealFiles = new DealFileService($filesystem, $request, $taskFiles);
+    $taskFiles = new TaskFilesService($errors);
+    $dealFiles = new DealFileService($filesystem, $request, $taskFiles, $errors);
     $identity = new EntityIdentityService($request);
     $commentDetails = new CommentDetailsService(
         $rest,

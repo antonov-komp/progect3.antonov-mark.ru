@@ -60,6 +60,7 @@ require_once __DIR__ . '/Database/Repositories/CommentDetailsRepository.php';
 require_once __DIR__ . '/Database/Repositories/DealDetailsRepository.php';
 require_once __DIR__ . '/Database/Repositories/EntityStateRepository.php';
 require_once __DIR__ . '/Database/Repositories/EntityFieldChangesRepository.php';
+require_once __DIR__ . '/Database/Repositories/ActivityFirstMetricsRepository.php';
 
 // Контейнер и компоненты рефакторинга
 require_once __DIR__ . '/Container/ServiceContainer.php';

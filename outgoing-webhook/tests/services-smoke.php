@@ -24,8 +24,8 @@ $formatter = new LogValueFormatter();
 $errors = new ErrorService($filesystem, $request);
 $identity = new EntityIdentityService($request);
 $taskDetails = new TaskDetailsService($filesystem, $request, $formatter);
-$taskFiles = new TaskFilesService();
-$dealFiles = new DealFileService($filesystem, $request, $taskFiles);
+$taskFiles = new TaskFilesService($errors);
+$dealFiles = new DealFileService($filesystem, $request, $taskFiles, $errors);
 $commentDetails = new CommentDetailsService(
     null,
     $errors,

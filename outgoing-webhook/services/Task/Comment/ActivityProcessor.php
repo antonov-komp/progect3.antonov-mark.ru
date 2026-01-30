@@ -3,10 +3,19 @@ declare(strict_types=1);
 
 /**
  * Обработчик Activity
- * 
+ *
  * Ответственность:
  * - Обработка Activity (синхронная или асинхронная)
  * - Поддержка нескольких типов Activity с разными полями сделок
+ *
+ * Хранилища файлов (Bitrix24):
+ * - Файл в чате задачи: пользователь прикрепил файл к комментарию (скрепка/драг-н-дроп).
+ *   Событие приходит с fileId — это ID файла на диске (загрузка с нуля, ID диска).
+ *   Такой ID можно использовать для присоединения к задаче (tasks.task.files.attach).
+ * - Поле файла в сделке (UF_CRM_*): другое хранилище. В сделку ID файла из задачи/чата
+ *   «прокинуть» нельзя — файлы для сделки и файлы в задачах это разные хранилища.
+ *   Для сделки получаем контент файла (disk.file.get → downloadUrl → base64) и
+ *   передаём в crm.deal.update в формате fileData ([имя, base64]).
  */
 class ActivityProcessor
 {
@@ -82,13 +91,14 @@ class ActivityProcessor
             throw new InvalidArgumentException('Invalid activity type or deal field: ' . $activityType);
         }
 
-        // Прикрепление файлов к задаче
+        // Прикрепление файлов к задаче (fileId из чата = ID диска, подходит для задачи)
         $taskAttach = ['attached' => [], 'errors' => []];
         if (!empty($fileIds)) {
             $taskAttach = $this->taskFiles->attachFiles($entityId, $fileIds, $restCall);
         }
 
-        // Построение данных файлов
+        // Построение данных файлов для сделки: ID в сделку не подставляем — хранилище другое.
+        // Получаем контент (disk.file.get → downloadUrl → base64) и передаём fileData в crm.deal.update.
         $fileDataList = [];
         foreach ($fileIds as $fileId) {
             $fileData = $this->dealFiles->buildDealFileData($fileId, $restCall);

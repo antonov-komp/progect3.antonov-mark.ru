@@ -1,8 +1,22 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * Сервис работы с файлами в контексте задач (чат, комментарии).
+ *
+ * fileId из события комментария (скрепка/драг-н-дроп) — это ID файла на диске задачи.
+ * Такой ID используется для присоединения к задаче (tasks.task.files.attach).
+ * Для записи в сделку этот же ID не подставляется — см. DealFileService (другое хранилище).
+ */
 class TaskFilesService
 {
+    private ErrorService $errors;
+
+    public function __construct(ErrorService $errors)
+    {
+        $this->errors = $errors;
+    }
+
     public function getAttachedFiles(string $taskId, callable $restCall): array
     {
         $result = $restCall('task.item.getfiles', ['TASKID' => (int) $taskId]);
@@ -43,7 +57,15 @@ class TaskFilesService
                 'fileId' => (int) $fileId,
             ]);
             if (!is_array($result) || !empty($result['error'])) {
-                $errors[] = ['fileId' => $fileId, 'error' => $result['error'] ?? 'unknown'];
+                $errorCode = $result['error'] ?? 'unknown';
+                $errors[] = ['fileId' => $fileId, 'error' => $errorCode];
+                $this->errors->log('Bitrix24 tasks.task.files.attach error', [
+                    'taskId' => $taskId,
+                    'fileId' => $fileId,
+                    'error' => $errorCode,
+                    'error_description' => $result['error_description'] ?? null,
+                    'response' => $result,
+                ]);
                 continue;
             }
             $attached[] = $fileId;
