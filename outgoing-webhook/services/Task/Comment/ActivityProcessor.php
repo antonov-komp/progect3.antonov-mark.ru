@@ -91,6 +91,19 @@ class ActivityProcessor
             throw new InvalidArgumentException('Invalid activity type or deal field: ' . $activityType);
         }
 
+        // Имя и размер первого файла (disk.file.get: NAME с расширением, SIZE)
+        $firstFileId = $fileIds[0] ?? null;
+        $file_name = '';
+        $file_size = null;
+        if ($firstFileId !== null) {
+            $fileInfo = $this->taskFiles->getDiskFileInfo((string) $firstFileId, $restCall);
+            if (is_array($fileInfo)) {
+                $file_name = (string) ($fileInfo['NAME'] ?? $fileInfo['name'] ?? '');
+                $size = $fileInfo['SIZE'] ?? $fileInfo['size'] ?? null;
+                $file_size = is_numeric($size) ? (int) $size : null;
+            }
+        }
+
         // Прикрепление файлов к задаче (fileId из чата = ID диска, подходит для задачи)
         $taskAttach = ['attached' => [], 'errors' => []];
         if (!empty($fileIds)) {
@@ -116,6 +129,15 @@ class ActivityProcessor
             );
         }
 
+        // Проверка успеха по факту наличия файлов: запрос файлов в задаче и в поле сделки
+        $taskFilesAfter = $this->taskFiles->getAttachedFiles($entityId, $restCall);
+        $verified_task_files_count = count($taskFilesAfter);
+        $verified_deal_files_count = 0;
+        if (!empty($dealIds)) {
+            $firstDealFiles = $this->dealFiles->getDealFileField($dealIds[0], $dealField, $restCall);
+            $verified_deal_files_count = count($firstDealFiles);
+        }
+
         return [
             'activityType' => $activityType,
             'dealField' => $dealField,
@@ -123,6 +145,12 @@ class ActivityProcessor
             'fileIds' => $fileIds,
             'taskAttach' => $taskAttach,
             'dealUpdates' => $dealUpdates,
+            'file_name' => $file_name,
+            'file_size' => $file_size,
+            'verified' => [
+                'task_files_count' => $verified_task_files_count,
+                'deal_files_count' => $verified_deal_files_count,
+            ],
         ];
     }
 }

@@ -77,14 +77,40 @@ class TaskFilesService
         ];
     }
 
+    /**
+     * Получить информацию о файле по идентификатору (disk.file.get).
+     *
+     * По документации: метод возвращает файл по идентификатору. Параметр — id (идентификатор файла).
+     * Ответ: result с полями ID, NAME, DOWNLOAD_URL, DETAIL_URL и др. (Scope: disk).
+     * ID из события комментария как раз передаётся в id.
+     */
     public function getDiskFileInfo(string $fileId, callable $restCall): ?array
     {
+        $fileId = trim($fileId);
+        if ($fileId === '') {
+            return null;
+        }
+
         $result = $restCall('disk.file.get', ['id' => (int) $fileId]);
         if (!is_array($result) || !empty($result['error'])) {
+            $this->errors->log('TaskFilesService::getDiskFileInfo — disk.file.get ошибка', [
+                'fileId' => $fileId,
+                'error' => $result['error'] ?? null,
+                'error_description' => $result['error_description'] ?? null,
+                'response' => $result,
+            ]);
             return null;
         }
 
         $data = $result['result'] ?? null;
-        return is_array($data) ? $data : null;
+        if (!is_array($data)) {
+            $this->errors->log('TaskFilesService::getDiskFileInfo — disk.file.get вернул пустой result', [
+                'fileId' => $fileId,
+                'response' => $result,
+            ]);
+            return null;
+        }
+
+        return $data;
     }
 }

@@ -279,6 +279,17 @@ function outgoingWebhookProcessActivitySync(
                     'files_count' => count($result['fileIds']),
                     'deals_count' => count($result['dealIds']),
                     'rate_limit_hit' => false,
+                    'activity_type' => $result['activityType'] ?? '',
+                    'deal_ids' => is_array($result['dealIds'] ?? null) ? implode(',', $result['dealIds']) : '',
+                    'file_name' => $result['file_name'] ?? '',
+                    'file_size' => $result['file_size'] ?? null,
+                    'result_full' => json_encode([
+                        'task_attach' => $result['taskAttach'] ?? [],
+                        'deal_updates' => $result['dealUpdates'] ?? [],
+                        'file_name' => $result['file_name'] ?? '',
+                        'file_size' => $result['file_size'] ?? null,
+                        'verified' => $result['verified'] ?? [],
+                    ], JSON_UNESCAPED_UNICODE),
                 ]);
             }
         }
@@ -321,6 +332,10 @@ function outgoingWebhookProcessActivitySync(
         if (outgoingWebhookContainer()->has('activityFirstMetricsRepository')) {
             $repo = outgoingWebhookContainer()->get('activityFirstMetricsRepository');
             if ($repo !== null) {
+                $dealIdsFromDetails = [];
+                if (!empty($commentDetails['crmLinks']) && function_exists('outgoingWebhookExtractDealIds')) {
+                    $dealIdsFromDetails = outgoingWebhookExtractDealIds($commentDetails['crmLinks']);
+                }
                 $repo->create([
                     'request_id' => $requestId,
                     'task_id' => $taskId,
@@ -329,9 +344,12 @@ function outgoingWebhookProcessActivitySync(
                     'duration_ms' => $durationMs,
                     'success' => false,
                     'files_count' => 0,
-                    'deals_count' => 0,
+                    'deals_count' => count($dealIdsFromDetails),
                     'rate_limit_hit' => false,
                     'error' => $e->getMessage(),
+                    'activity_type' => $commentDetails['activityType'] ?? '',
+                    'deal_ids' => is_array($dealIdsFromDetails) ? implode(',', $dealIdsFromDetails) : '',
+                    'result_full' => json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_UNICODE),
                 ]);
             }
         }

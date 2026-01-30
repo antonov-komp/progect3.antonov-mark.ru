@@ -183,6 +183,7 @@ CREATE INDEX IF NOT EXISTS idx_entity_field_changes_entity_type_id ON entity_fie
 CREATE INDEX IF NOT EXISTS idx_entity_field_changes_changed_at ON entity_field_changes(changed_at);
 
 -- Таблица метрик ActivityFirst
+-- Факт: задача (task_id), сделки (deal_ids), тип (activity_type: cover | approved_form), полный результат (result_full)
 CREATE TABLE IF NOT EXISTS activity_first_metrics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     request_id TEXT NOT NULL,
@@ -195,6 +196,11 @@ CREATE TABLE IF NOT EXISTS activity_first_metrics (
     deals_count INTEGER DEFAULT 0,
     rate_limit_hit BOOLEAN NOT NULL DEFAULT 0,
     error TEXT,
+    activity_type TEXT DEFAULT '',
+    deal_ids TEXT DEFAULT '',
+    result_full TEXT,
+    file_name TEXT DEFAULT '',
+    file_size INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (request_id) REFERENCES events(request_id) ON DELETE CASCADE
 );
@@ -204,3 +210,4 @@ CREATE INDEX IF NOT EXISTS idx_activity_first_metrics_request_id ON activity_fir
 CREATE INDEX IF NOT EXISTS idx_activity_first_metrics_task_id ON activity_first_metrics(task_id);
 CREATE INDEX IF NOT EXISTS idx_activity_first_metrics_logged_at ON activity_first_metrics(logged_at);
 CREATE INDEX IF NOT EXISTS idx_activity_first_metrics_success ON activity_first_metrics(success);
+CREATE INDEX IF NOT EXISTS idx_activity_first_metrics_activity_type ON activity_first_metrics(activity_type);

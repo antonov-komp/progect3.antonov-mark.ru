@@ -70,4 +70,19 @@ if ($efcCols !== [] && !in_array('changes_resolved', $efcCols, true)) {
     echo "✓ Миграция 003_add_entity_field_changes_resolved применена.\n";
 }
 
+$stmt = $pdo->query("PRAGMA table_info(activity_first_metrics)");
+$afmCols = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'name');
+if (!in_array('activity_type', $afmCols, true)) {
+    $pdo->exec('ALTER TABLE activity_first_metrics ADD COLUMN activity_type TEXT DEFAULT \'\'');
+    echo "✓ Миграция 004: добавлена колонка activity_type.\n";
+}
+if (!in_array('deal_ids', $afmCols, true)) {
+    $pdo->exec('ALTER TABLE activity_first_metrics ADD COLUMN deal_ids TEXT DEFAULT \'\'');
+    echo "✓ Миграция 004: добавлена колонка deal_ids.\n";
+}
+if (!in_array('result_full', $afmCols, true)) {
+    $pdo->exec('ALTER TABLE activity_first_metrics ADD COLUMN result_full TEXT');
+    echo "✓ Миграция 004: добавлена колонка result_full.\n";
+}
+
 echo "Готово.\n";

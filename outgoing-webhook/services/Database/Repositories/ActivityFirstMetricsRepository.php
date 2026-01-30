@@ -21,17 +21,23 @@ class ActivityFirstMetricsRepository
     /**
      * Создать запись метрики Activity
      *
-     * @param array $data request_id, task_id, logged_at, sync, duration_ms, success, files_count, deals_count, rate_limit_hit, error
+     * Поля: задача (task_id), сделки (deal_ids), тип (activity_type), полный результат (result_full),
+     * имя файла с форматом (file_name), размер файла (file_size).
+     * Успех проверяется фактом наличия файлов в задаче и в поле сделки (verified в result_full).
+     *
+     * @param array $data request_id, task_id, ..., activity_type, deal_ids, result_full, file_name, file_size
      * @return int|null ID созданной записи или null при ошибке
      */
     public function create(array $data): ?int
     {
         $sql = "INSERT INTO activity_first_metrics (
             request_id, task_id, logged_at, sync, duration_ms, success,
-            files_count, deals_count, rate_limit_hit, error, created_at
+            files_count, deals_count, rate_limit_hit, error,
+            activity_type, deal_ids, result_full, file_name, file_size, created_at
         ) VALUES (
             :request_id, :task_id, :logged_at, :sync, :duration_ms, :success,
-            :files_count, :deals_count, :rate_limit_hit, :error, :created_at
+            :files_count, :deals_count, :rate_limit_hit, :error,
+            :activity_type, :deal_ids, :result_full, :file_name, :file_size, :created_at
         )";
 
         $params = [
@@ -45,6 +51,11 @@ class ActivityFirstMetricsRepository
             ':deals_count' => (int)($data['deals_count'] ?? 0),
             ':rate_limit_hit' => isset($data['rate_limit_hit']) ? (int)(bool)$data['rate_limit_hit'] : 0,
             ':error' => $data['error'] ?? null,
+            ':activity_type' => $data['activity_type'] ?? '',
+            ':deal_ids' => $data['deal_ids'] ?? '',
+            ':result_full' => $data['result_full'] ?? null,
+            ':file_name' => $data['file_name'] ?? '',
+            ':file_size' => isset($data['file_size']) && is_numeric($data['file_size']) ? (int) $data['file_size'] : null,
             ':created_at' => $data['created_at'] ?? date('Y-m-d H:i:s'),
         ];
 
