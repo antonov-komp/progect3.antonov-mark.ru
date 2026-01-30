@@ -49,6 +49,16 @@ class JobStateService
         ]);
     }
 
+    /**
+     * Вернуть задание в очередь для повторной попытки (записать в pending)
+     */
+    public function markRequeue(QueueJob $job): void
+    {
+        $pendingPath = $this->queue->getPendingDir() . '/' . $job->getName();
+        outgoingWebhookWriteJson($pendingPath, $job->getData());
+        @unlink($job->getPath());
+    }
+
     public function recoverProcessing(): void
     {
         $processingDir = $this->queue->getProcessingDir();

@@ -176,13 +176,15 @@ class CommentDetailsService
         // Обработка Activity (если требуется)
         if ($commentWritten && is_array($commentDetails)) {
             $activityType = $commentDetails['activityType'] ?? null;
-            
+            $requestId = $job['requestId'] ?? 'unknown';
+            $activityStart = microtime(true);
+
             if ($activityType !== null && is_string($activityType)) {
                 // Использование нового ActivityProcessor с типом Activity
                 $result = $this->activityProcessor->process($commentDetails, $activityType, $entityId, $restCall);
                 $this->taskDetails->logActivityFirst([
                     'loggedAt' => $this->request->now(),
-                    'requestId' => $job['requestId'] ?? 'unknown',
+                    'requestId' => $requestId,
                     'taskId' => $entityId,
                     'activityType' => $activityType,
                     'dealField' => $result['dealField'],
@@ -191,18 +193,26 @@ class CommentDetailsService
                     'taskAttach' => $result['taskAttach'],
                     'dealUpdates' => $result['dealUpdates'],
                 ]);
+                if (function_exists('outgoingWebhookWriteActivityFirstMetrics')) {
+                    $durationMs = (int) ((microtime(true) - $activityStart) * 1000);
+                    outgoingWebhookWriteActivityFirstMetrics($requestId, $entityId, $result, false, $durationMs);
+                }
             } elseif (!empty($commentDetails['activityFirst'])) {
                 // Обратная совместимость: использование старого ActivityFirstProcessor
                 $result = $this->activityFirst->process($commentDetails, $entityId, $restCall);
                 $this->taskDetails->logActivityFirst([
                     'loggedAt' => $this->request->now(),
-                    'requestId' => $job['requestId'] ?? 'unknown',
+                    'requestId' => $requestId,
                     'taskId' => $entityId,
                     'dealIds' => $result['dealIds'],
                     'fileIds' => $result['fileIds'],
                     'taskAttach' => $result['taskAttach'],
                     'dealUpdates' => $result['dealUpdates'],
                 ]);
+                if (function_exists('outgoingWebhookWriteActivityFirstMetrics')) {
+                    $durationMs = (int) ((microtime(true) - $activityStart) * 1000);
+                    outgoingWebhookWriteActivityFirstMetrics($requestId, $entityId, $result, false, $durationMs);
+                }
             }
         }
     }
@@ -277,13 +287,11 @@ class CommentDetailsService
 
     public function fetchDetails(callable $restCall, string $taskId, string $commentId, ?string $messageId = null): array
     {
-        // Используем CommentFetcher для получения данных
-        // Получаем taskData для fallback через чат
+        // Данные задачи нужны для чата: событие = сообщение в чате, привязанном к задаче
         $taskResult = $restCall('tasks.task.get', ['id' => $taskId]);
         $taskPayload = $taskResult['result'] ?? $taskResult;
         $taskData = is_array($taskPayload) ? ($taskPayload['task'] ?? $taskPayload) : null;
-        
-        // Используем CommentFetcher с messageId для fallback через чат
+
         return $this->fetcher->fetch($taskId, $commentId, $messageId, $taskData);
     }
 

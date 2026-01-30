@@ -22,10 +22,9 @@ class ActivityFirstMetricsRepository
      * Создать запись метрики Activity
      *
      * Поля: задача (task_id), сделки (deal_ids), тип (activity_type), полный результат (result_full),
-     * имя файла с форматом (file_name), размер файла (file_size).
-     * Успех проверяется фактом наличия файлов в задаче и в поле сделки (verified в result_full).
+     * имя файла (file_name), размер (file_size), автор (author_id, author_name), текст комментария (comment_text).
      *
-     * @param array $data request_id, task_id, ..., activity_type, deal_ids, result_full, file_name, file_size
+     * @param array $data request_id, task_id, ..., author_id, author_name, comment_text, ...
      * @return int|null ID созданной записи или null при ошибке
      */
     public function create(array $data): ?int
@@ -33,11 +32,13 @@ class ActivityFirstMetricsRepository
         $sql = "INSERT INTO activity_first_metrics (
             request_id, task_id, logged_at, sync, duration_ms, success,
             files_count, deals_count, rate_limit_hit, error,
-            activity_type, deal_ids, result_full, file_name, file_size, created_at
+            activity_type, deal_ids, result_full, file_name, file_size,
+            author_id, author_name, comment_text, created_at
         ) VALUES (
             :request_id, :task_id, :logged_at, :sync, :duration_ms, :success,
             :files_count, :deals_count, :rate_limit_hit, :error,
-            :activity_type, :deal_ids, :result_full, :file_name, :file_size, :created_at
+            :activity_type, :deal_ids, :result_full, :file_name, :file_size,
+            :author_id, :author_name, :comment_text, :created_at
         )";
 
         $params = [
@@ -56,6 +57,9 @@ class ActivityFirstMetricsRepository
             ':result_full' => $data['result_full'] ?? null,
             ':file_name' => $data['file_name'] ?? '',
             ':file_size' => isset($data['file_size']) && is_numeric($data['file_size']) ? (int) $data['file_size'] : null,
+            ':author_id' => $data['author_id'] ?? '',
+            ':author_name' => $data['author_name'] ?? '',
+            ':comment_text' => $data['comment_text'] ?? '',
             ':created_at' => $data['created_at'] ?? date('Y-m-d H:i:s'),
         ];
 
@@ -70,5 +74,23 @@ class ActivityFirstMetricsRepository
             ]);
             return null;
         }
+    }
+
+    /**
+     * Проверить наличие записи по паре (request_id, task_id) — маркер «Activity First уже обработан»
+     *
+     * @param string $requestId ID запроса
+     * @param string $taskId ID задачи
+     * @return bool
+     */
+    public function existsByRequestAndTask(string $requestId, string $taskId): bool
+    {
+        $sql = "SELECT 1 FROM activity_first_metrics 
+                WHERE request_id = :request_id AND task_id = :task_id LIMIT 1";
+        $result = $this->database->queryOne($sql, [
+            ':request_id' => $requestId,
+            ':task_id' => $taskId,
+        ]);
+        return $result !== null;
     }
 }

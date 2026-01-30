@@ -84,5 +84,25 @@ if (!in_array('result_full', $afmCols, true)) {
     $pdo->exec('ALTER TABLE activity_first_metrics ADD COLUMN result_full TEXT');
     echo "✓ Миграция 004: добавлена колонка result_full.\n";
 }
+if (!in_array('file_name', $afmCols, true)) {
+    $pdo->exec('ALTER TABLE activity_first_metrics ADD COLUMN file_name TEXT DEFAULT \'\'');
+    echo "✓ Миграция 005: добавлена колонка file_name.\n";
+}
+if (!in_array('file_size', $afmCols, true)) {
+    $pdo->exec('ALTER TABLE activity_first_metrics ADD COLUMN file_size INTEGER');
+    echo "✓ Миграция 005: добавлена колонка file_size.\n";
+}
+if (!in_array('author_id', $afmCols, true)) {
+    $pdo->exec('ALTER TABLE activity_first_metrics ADD COLUMN author_id TEXT DEFAULT \'\'');
+    echo "✓ Миграция 006: добавлена колонка author_id.\n";
+}
+if (!in_array('author_name', $afmCols, true)) {
+    $pdo->exec('ALTER TABLE activity_first_metrics ADD COLUMN author_name TEXT DEFAULT \'\'');
+    echo "✓ Миграция 006: добавлена колонка author_name.\n";
+}
+if (!in_array('comment_text', $afmCols, true)) {
+    $pdo->exec('ALTER TABLE activity_first_metrics ADD COLUMN comment_text TEXT DEFAULT \'\'');
+    echo "✓ Миграция 006: добавлена колонка comment_text.\n";
+}
 
 echo "Готово.\n";

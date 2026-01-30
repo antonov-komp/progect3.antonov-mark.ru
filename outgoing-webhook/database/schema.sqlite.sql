@@ -201,6 +201,9 @@ CREATE TABLE IF NOT EXISTS activity_first_metrics (
     result_full TEXT,
     file_name TEXT DEFAULT '',
     file_size INTEGER,
+    author_id TEXT DEFAULT '',
+    author_name TEXT DEFAULT '',
+    comment_text TEXT DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (request_id) REFERENCES events(request_id) ON DELETE CASCADE
 );

@@ -35,6 +35,7 @@ require_once __DIR__ . '/Queue/QueueJob.php';
 require_once __DIR__ . '/Queue/QueueService.php';
 require_once __DIR__ . '/Queue/DatabaseQueueService.php';
 require_once __DIR__ . '/Queue/JobStateService.php';
+require_once __DIR__ . '/Queue/DatabaseJobStateService.php';
 require_once __DIR__ . '/Queue/QueueRunner.php';
 require_once __DIR__ . '/Task/TaskDetailsService.php';
 require_once __DIR__ . '/Task/TaskFilesService.php';
@@ -61,6 +62,7 @@ require_once __DIR__ . '/Database/Repositories/DealDetailsRepository.php';
 require_once __DIR__ . '/Database/Repositories/EntityStateRepository.php';
 require_once __DIR__ . '/Database/Repositories/EntityFieldChangesRepository.php';
 require_once __DIR__ . '/Database/Repositories/ActivityFirstMetricsRepository.php';
+require_once __DIR__ . '/Database/Repositories/EnrichedDataRepository.php';
 
 // Контейнер и компоненты рефакторинга
 require_once __DIR__ . '/Container/ServiceContainer.php';

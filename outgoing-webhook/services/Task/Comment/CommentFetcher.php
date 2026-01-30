@@ -3,11 +3,14 @@ declare(strict_types=1);
 
 /**
  * Получение деталей комментария
- * 
+ *
+ * Событие ONTASKCOMMENTADD в Bitrix24 по сути — сообщение в чате, привязанном к задаче.
+ * Актуальный источник: чат задачи (im.dialog.messages.get). task.commentitem.get — устаревший
+ * формат и часто возвращает ERROR_CORE; используется только как fallback при отсутствии чата.
+ *
  * Ответственность:
- * - Получение деталей комментария через REST API
- * - Получение деталей комментария через чат API
- * - Fallback-логика
+ * - Получение сообщения через чат задачи (im.dialog.messages.get) — приоритет
+ * - Fallback: task.commentitem.get / getlist — только если чат недоступен или нет messageId
  */
 class CommentFetcher
 {
@@ -43,14 +46,9 @@ class CommentFetcher
     public function fetch(string $taskId, string $commentId, ?string $messageId, ?array $taskData): array
     {
         $restCall = fn(string $method, array $params = []) => $this->rest->call($method, $params);
-        
-        // Попытка получить через task.commentitem.get
-        $fetch = $this->fetchFromTask($restCall, $taskId, $commentId);
-        if (is_array($fetch['data'])) {
-            return $fetch;
-        }
+        $errors = [];
 
-        // Fallback: получение через чат
+        // Приоритет: сообщение в чате задачи (событие по факту = сообщение чата, привязанного к задаче)
         if ($messageId !== null && is_array($taskData)) {
             $taskData = $this->taskDetails->ensureCrmLinks($taskData, $taskId, $restCall);
             $chatId = $this->extractChatId($taskData);
@@ -59,14 +57,23 @@ class CommentFetcher
                 if (is_array($chatFetch['data'])) {
                     return $chatFetch;
                 }
+                $errors = array_merge($errors, $chatFetch['errors'] ?? []);
             }
         }
 
-        return ['data' => null, 'method' => null, 'errors' => $fetch['errors'] ?? []];
+        // Fallback: устаревший task.commentitem.get (часто ERROR_CORE в облаке)
+        $fetch = $this->fetchFromTask($restCall, $taskId, $commentId);
+        if (is_array($fetch['data'])) {
+            return $fetch;
+        }
+
+        $errors = array_merge($errors, $fetch['errors'] ?? []);
+        return ['data' => null, 'method' => null, 'errors' => $errors];
     }
 
     /**
-     * Получение комментария через task.commentitem.get
+     * Fallback: получение через устаревший API task.commentitem.get / getlist.
+     * В облаке часто возвращает ERROR_CORE; приоритет — чат задачи (fetchFromChat).
      */
     private function fetchFromTask(callable $restCall, string $taskId, string $commentId): array
     {

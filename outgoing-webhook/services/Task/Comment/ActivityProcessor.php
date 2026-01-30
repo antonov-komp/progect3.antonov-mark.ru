@@ -147,6 +147,8 @@ class ActivityProcessor
             'dealUpdates' => $dealUpdates,
             'file_name' => $file_name,
             'file_size' => $file_size,
+            'author_id' => (string) ($commentDetails['authorId'] ?? ''),
+            'comment_text' => (string) ($commentDetails['message'] ?? ''),
             'verified' => [
                 'task_files_count' => $verified_task_files_count,
                 'deal_files_count' => $verified_deal_files_count,

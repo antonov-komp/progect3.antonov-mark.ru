@@ -264,6 +264,25 @@ public function call(string $method, array $params = []): array
 3. **ACCESS_DENIED** — нет доступа
 4. **QUERY_LIMIT_EXCEEDED** — превышен лимит запросов
 5. **INTERNAL_SERVER_ERROR** — внутренняя ошибка Bitrix24
+6. **ERROR_CORE** — внутренняя/ядровая ошибка Bitrix24 (часто без детализации в `error_information`)
+
+#### ERROR_CORE при обработке очереди комментариев
+
+**Контекст:** событие ONTASKCOMMENTADD по сути — это **сообщение в чате, привязанном к задаче**. В коде приоритет отдан чату задачи (`im.dialog.messages.get`); устаревший формат `task.commentitem.get` используется только как fallback и в облаке часто даёт ERROR_CORE.
+
+При запуске `process-queue-cli.php` для ONTASKCOMMENTADD могут наблюдаться ошибки:
+
+- **task.commentitem.get** / **task.commentitem.getlist** — ERROR_CORE (устаревший API комментариев задачи)
+- **task.item.getdata** — ERROR_CORE (данные задачи)
+
+**Поведение в коде:**
+
+- **Сначала** запрашивается сообщение через чат задачи (`im.dialog.messages.get`) по `messageId` и `chatId` из данных задачи.
+- **Только при отсутствии** messageId/chatId или если сообщение не найдено в чате — вызывается fallback `task.commentitem.get` / getlist.
+- Чат возвращает последние ~50 сообщений; если нужное сообщение старше — будет «message not found».
+- При отсутствии данных пишется fallback в comment_details и в лог: `Comment details missing`. Activity не выполняется без полных деталей (fileIds, crmLinks, activityType).
+
+**Рекомендации:** проверять scope вебхука (чат, задачи); при постоянном ERROR_CORE по task.* — причина на стороне Bitrix24 или прав доступа.
 
 ---
 

@@ -9,6 +9,22 @@ require_once __DIR__ . '/../../app/Services/Bitrix24Client.php';
 const OUTGOING_WEBHOOK_MAX_ATTEMPTS = 3;
 const OUTGOING_WEBHOOK_PROCESSING_TIMEOUT = 900; // 15 minutes
 
+/**
+ * Использовать очередь из БД (queue_jobs) при DATABASE_TYPE=sqlite и доступной БД.
+ */
+function processQueueUseDatabase(): bool
+{
+    $container = outgoingWebhookContainer();
+    try {
+        $db = $container->get('database');
+        $qRepo = $container->get('queueRepository');
+        $dbType = strtolower((string) $container->get('config')->get('DATABASE_TYPE', ''));
+        return $db !== null && $qRepo !== null && $dbType === 'sqlite';
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
 function outgoingWebhookGetServices(): array
 {
     static $services = null;
@@ -188,5 +204,11 @@ if ($limit <= 0) {
     $limit = 50;
 }
 
-$result = outgoingWebhookGetServices()['runner']->run($limit);
+if (processQueueUseDatabase()) {
+    $runner = outgoingWebhookContainer()->get('runner');
+    $result = $runner->run($limit);
+} else {
+    $result = outgoingWebhookGetServices()['runner']->run($limit);
+}
+
 outgoingWebhookJsonResponse(200, $result);

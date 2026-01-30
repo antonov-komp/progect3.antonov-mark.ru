@@ -97,15 +97,21 @@ class ServiceContainer
             return new QueueRepository($database, $this->get('errors'));
         };
         
-        $this->factories['taskDetailsRepository'] = fn() => new TaskDetailsRepository(
-            $this->get('database'),
-            $this->get('errors')
-        );
+        $this->factories['taskDetailsRepository'] = function() {
+            $db = $this->get('database');
+            if ($db === null) {
+                return null;
+            }
+            return new TaskDetailsRepository($db, $this->get('errors'));
+        };
         
-        $this->factories['commentDetailsRepository'] = fn() => new CommentDetailsRepository(
-            $this->get('database'),
-            $this->get('errors')
-        );
+        $this->factories['commentDetailsRepository'] = function() {
+            $db = $this->get('database');
+            if ($db === null) {
+                return null;
+            }
+            return new CommentDetailsRepository($db, $this->get('errors'));
+        };
 
         $this->factories['dealDetailsRepository'] = function() {
             $db = $this->get('database');
@@ -138,15 +144,52 @@ class ServiceContainer
             }
             return new ActivityFirstMetricsRepository($db, $this->get('errors'));
         };
+
+        // Очередь из БД (для process-queue при DATABASE_TYPE=sqlite)
+        $this->factories['queue'] = function() {
+            $repo = $this->get('queueRepository');
+            if ($repo === null) {
+                throw new RuntimeException('queue requires queueRepository (database enabled)');
+            }
+            return new DatabaseQueueService($repo, $this->get('errors'));
+        };
+
+        $this->factories['jobState'] = function() {
+            $repo = $this->get('queueRepository');
+            if ($repo === null) {
+                throw new RuntimeException('jobState requires queueRepository (database enabled)');
+            }
+            $maxAttempts = (int) ($this->get('config')->get('QUEUE_MAX_ATTEMPTS', '3'));
+            $processingTimeout = (int) ($this->get('config')->get('QUEUE_PROCESSING_TIMEOUT', '900'));
+            return new DatabaseJobStateService($repo, $this->get('errors'), $maxAttempts, $processingTimeout);
+        };
+
+        $this->factories['steps'] = fn() => new QueueStepLogger($this->basePath . '/logs/queue-steps.log');
+
+        $this->factories['runner'] = function() {
+            $enrichedRepo = $this->has('enrichedDataRepository') ? $this->get('enrichedDataRepository') : null;
+            return new QueueRunner(
+                $this->get('queue'),
+                $this->get('jobState'),
+                $this->get('enrichment'),
+                $this->get('errors'),
+                $this->get('steps'),
+                $this->get('taskDetails'),
+                $this->get('commentDetails'),
+                $enrichedRepo
+            );
+        };
         
         // Сервисы для работы с задачами
         $this->factories['taskDetails'] = function() {
             $taskDetailsRepo = $this->has('taskDetailsRepository') ? $this->get('taskDetailsRepository') : null;
+            $activityFirstRepo = $this->has('activityFirstMetricsRepository') ? $this->get('activityFirstMetricsRepository') : null;
             return new TaskDetailsService(
                 $this->get('filesystem'),
                 $this->get('request'),
                 $this->get('formatter'),
-                $taskDetailsRepo
+                $taskDetailsRepo,
+                $activityFirstRepo
             );
         };
         $this->factories['taskFiles'] = fn() => new TaskFilesService($this->get('errors'));
@@ -162,6 +205,27 @@ class ServiceContainer
             $this->get('errors'),
             $this->basePath . '/logs/dicts'
         );
+
+        $this->factories['enrichment'] = function() {
+            $dicts = $this->get('dicts');
+            $handlers = [
+                new DealHandler($dicts),
+                new LeadHandler($dicts),
+                new SmartProcessHandler($dicts),
+                new TaskHandler(),
+                new UserHandler(),
+                new ProjectHandler(),
+                new CrmUserFieldHandler(),
+                new ContactHandler(),
+                new CompanyHandler(),
+            ];
+            return new EnrichmentService(
+                $this->get('rest'),
+                $this->get('errors'),
+                $this->get('stateStorage'),
+                $handlers
+            );
+        };
 
         $this->factories['userResolver'] = fn() => new UserResolver($this->get('dicts'));
 

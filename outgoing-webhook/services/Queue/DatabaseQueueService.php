@@ -23,37 +23,83 @@ class DatabaseQueueService
     }
 
     /**
+     * Нормализация строки БД (snake_case) в формат QueueRunner (camelCase)
+     */
+    private function normalizeJobData(array $row): array
+    {
+        $map = [
+            'request_id' => 'requestId',
+            'event_type' => 'eventType',
+            'entity_type' => 'entityType',
+            'entity_id' => 'entityId',
+            'created_at' => 'createdAt',
+            'updated_at' => 'updatedAt',
+            'processed_at' => 'processedAt',
+            'error_message' => 'errorMessage',
+            'token_source' => 'tokenSource',
+            'event_handler_id' => 'eventHandlerId',
+            'member_id' => 'memberId',
+        ];
+        $data = [];
+        foreach ($row as $key => $value) {
+            $camel = $map[$key] ?? $key;
+            $data[$camel] = $value;
+        }
+        return $data;
+    }
+
+    /**
      * Получить список заданий со статусом pending
-     * 
+     * Данные приводятся к camelCase; rawPath = db://queue_jobs/{id}
+     *
      * @param int $limit Лимит записей
      * @return array Массив QueueJob объектов
      */
     public function listPending(int $limit): array
     {
         $jobs = $this->queueRepository->listPending($limit);
-        
-        // Преобразование в QueueJob объекты для обратной совместимости
         $queueJobs = [];
-        foreach ($jobs as $jobData) {
+        foreach ($jobs as $row) {
+            $data = $this->normalizeJobData($row);
+            $jobId = (int) ($row['id'] ?? 0);
+            $data['rawPath'] = 'db://queue_jobs/' . $jobId;
             $queueJobs[] = new QueueJob(
-                "db://queue_jobs/{$jobData['id']}", // Виртуальный путь для обратной совместимости
-                $jobData,
-                true // Всегда валидные данные из БД
+                $data['rawPath'],
+                $data,
+                true
             );
         }
-
         return $queueJobs;
     }
 
     /**
-     * Подсчитать количество заданий по статусу
-     * 
-     * @param string $status Статус (pending, processing, done, failed)
-     * @return int Количество заданий
+     * Подсчитать количество заданий.
+     * Принимает либо статус (pending, processing, done, failed), либо виртуальный путь (db://queue/pending и т.д.)
      */
-    public function count(string $status): int
+    public function count(string $statusOrDir): int
     {
-        return $this->queueRepository->countByStatus($status);
+        $status = $this->dirToStatus($statusOrDir);
+        return $status !== null
+            ? $this->queueRepository->countByStatus($status)
+            : 0;
+    }
+
+    /**
+     * Преобразование виртуального пути или имени статуса в статус для БД
+     */
+    private function dirToStatus(string $statusOrDir): ?string
+    {
+        $map = [
+            'pending' => 'pending',
+            'processing' => 'processing',
+            'done' => 'done',
+            'failed' => 'failed',
+            'db://queue/pending' => 'pending',
+            'db://queue/processing' => 'processing',
+            'db://queue/done' => 'done',
+            'db://queue/failed' => 'failed',
+        ];
+        return $map[$statusOrDir] ?? null;
     }
 
     /**

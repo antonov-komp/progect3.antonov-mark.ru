@@ -7,6 +7,8 @@ require_once __DIR__ . '/bootstrap.php';
 try {
     // Инициализация контейнера
     $container = new ServiceContainer();
+    // Чтобы синхронная обработка Activity (после ответа) использовала ту же БД и репозитории
+    $GLOBALS['outgoingWebhookContainer'] = $container;
     
     // Логирование для отладки (временное)
     $container->get('errors')->log('index.php: Starting request processing', [

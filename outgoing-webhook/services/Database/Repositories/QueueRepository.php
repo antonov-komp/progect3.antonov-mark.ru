@@ -254,6 +254,67 @@ class QueueRepository
     }
 
     /**
+     * Взять задание в работу (pending → processing)
+     * Обновляет только записи со статусом pending для избежания гонки при конкурентном запуске.
+     *
+     * @param int $jobId ID задания
+     * @return bool true если статус обновлён
+     */
+    public function setProcessing(int $jobId): bool
+    {
+        $now = date('Y-m-d H:i:s');
+        $sql = "UPDATE queue_jobs 
+                SET status = 'processing', 
+                    updated_at = :updated_at,
+                    processed_at = NULL,
+                    error_message = NULL
+                WHERE id = :id AND status = 'pending'";
+
+        try {
+            $stmt = $this->database->query($sql, [
+                ':id' => $jobId,
+                ':updated_at' => $now,
+            ]);
+            return $stmt->rowCount() > 0;
+        } catch (Exception $e) {
+            $this->errors->log('Failed to set queue job processing', [
+                'job_id' => $jobId,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Вернуть зависшие задания (processing) в pending
+     *
+     * @param int $timeoutSeconds Таймаут в секундах (например 900 = 15 минут)
+     * @return int Количество обновлённых записей
+     */
+    public function resetStaleProcessing(int $timeoutSeconds): int
+    {
+        $now = date('Y-m-d H:i:s');
+        // SQLite: сравнение времени через julianday или strftime
+        $sql = "UPDATE queue_jobs 
+                SET status = 'pending', updated_at = :updated_at 
+                WHERE status = 'processing' 
+                AND (julianday('now') - julianday(updated_at)) * 86400 > :timeout";
+
+        try {
+            $stmt = $this->database->query($sql, [
+                ':updated_at' => $now,
+                ':timeout' => $timeoutSeconds,
+            ]);
+            return $stmt->rowCount();
+        } catch (Exception $e) {
+            $this->errors->log('Failed to reset stale processing jobs', [
+                'error' => $e->getMessage(),
+            ]);
+            return 0;
+        }
+    }
+
+    /**
      * Найти задание по request_id
      * 
      * @param string $requestId ID запроса

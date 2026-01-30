@@ -7,18 +7,21 @@ class TaskDetailsService
     private RequestService $request;
     private LogValueFormatter $formatter;
     private ?TaskDetailsRepository $taskDetailsRepository;
+    private ?ActivityFirstMetricsRepository $activityFirstMetricsRepository;
     private string $basePath;
 
     public function __construct(
-        FilesystemService $filesystem, 
-        RequestService $request, 
+        FilesystemService $filesystem,
+        RequestService $request,
         LogValueFormatter $formatter,
-        ?TaskDetailsRepository $taskDetailsRepository = null
+        ?TaskDetailsRepository $taskDetailsRepository = null,
+        ?ActivityFirstMetricsRepository $activityFirstMetricsRepository = null
     ) {
         $this->filesystem = $filesystem;
         $this->request = $request;
         $this->formatter = $formatter;
         $this->taskDetailsRepository = $taskDetailsRepository;
+        $this->activityFirstMetricsRepository = $activityFirstMetricsRepository;
         $this->basePath = dirname(__DIR__, 2);
     }
 
@@ -419,13 +422,17 @@ class TaskDetailsService
 
     /**
      * Проверка, было ли событие уже обработано синхронно
-     * 
+     * При наличии БД проверяется наличие записи в activity_first_metrics; иначе — файловый маркер.
+     *
      * @param string $requestId ID запроса
      * @param string $taskId ID задачи
      * @return bool
      */
     public function isActivityFirstProcessed(string $requestId, string $taskId): bool
     {
+        if ($this->activityFirstMetricsRepository !== null) {
+            return $this->activityFirstMetricsRepository->existsByRequestAndTask($requestId, $taskId);
+        }
         $stateFile = $this->basePath . '/state/activity-first-processed/' . $requestId . '_' . $taskId . '.json';
         return file_exists($stateFile);
     }

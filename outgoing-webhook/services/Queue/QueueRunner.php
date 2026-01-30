@@ -10,6 +10,7 @@ class QueueRunner
     private QueueStepLogger $steps;
     private TaskDetailsService $taskDetails;
     private CommentDetailsService $commentDetails;
+    private ?EnrichedDataRepository $enrichedDataRepository;
 
     public function __construct(
         QueueService $queue,
@@ -18,7 +19,8 @@ class QueueRunner
         ErrorService $errors,
         QueueStepLogger $steps,
         TaskDetailsService $taskDetails,
-        CommentDetailsService $commentDetails
+        CommentDetailsService $commentDetails,
+        ?EnrichedDataRepository $enrichedDataRepository = null
     ) {
         $this->queue = $queue;
         $this->jobState = $jobState;
@@ -27,6 +29,7 @@ class QueueRunner
         $this->steps = $steps;
         $this->taskDetails = $taskDetails;
         $this->commentDetails = $commentDetails;
+        $this->enrichedDataRepository = $enrichedDataRepository;
     }
 
     public function run(int $limit): array
@@ -45,7 +48,9 @@ class QueueRunner
             if (!$processingJob->isValid()) {
                 $failedJob = new QueueJob($processingJob->getPath(), ['attempt' => $this->jobState->getMaxAttempts()]);
                 $this->jobState->markFailed($failedJob, 'invalid_job');
-                @unlink($processingJob->getPath());
+                if (!str_starts_with($processingJob->getPath(), 'db://')) {
+                    @unlink($processingJob->getPath());
+                }
                 continue;
             }
             $job = $processingJob->getData();
@@ -58,7 +63,7 @@ class QueueRunner
             $raw = [];
             if (isset($job['payload']) && is_array($job['payload'])) {
                 $raw = ['payload' => $job['payload']];
-            } elseif ($rawPath !== '' && file_exists($rawPath)) {
+            } elseif ($rawPath !== '' && !str_starts_with($rawPath, 'db://') && file_exists($rawPath)) {
                 $raw = json_decode((string) file_get_contents($rawPath), true);
             }
             if (!is_array($raw)) {
@@ -82,13 +87,26 @@ class QueueRunner
             ]);
 
             $enriched = $this->enrichment->buildEnriched($eventType, $entityType, $entityId, $raw, $rawPath);
+            if (empty($enriched['error']) && $this->enrichedDataRepository !== null) {
+                $this->enrichedDataRepository->create([
+                    'request_id' => $job['requestId'] ?? '',
+                    'event_type' => $eventType,
+                    'entity_type' => $entityType,
+                    'entity_id' => (string) $entityId,
+                    'enriched_at' => date('Y-m-d H:i:s'),
+                    'source_method' => $enriched['sourceMethod'] ?? $enriched['source_method'] ?? null,
+                    'response_time_ms' => $enriched['responseTimeMs'] ?? $enriched['response_time_ms'] ?? null,
+                    'data' => $enriched,
+                ]);
+            }
             if (!empty($enriched['error'])) {
                 if ($job['attempt'] >= $this->jobState->getMaxAttempts()) {
                     $this->jobState->markFailed($processingJob, $enriched['error'], $enriched['details'] ?? null);
-                    @unlink($processingJob->getPath());
+                    if (!str_starts_with($processingJob->getPath(), 'db://')) {
+                        @unlink($processingJob->getPath());
+                    }
                 } else {
-                    outgoingWebhookWriteJson($processingJob->getPath(), $job);
-                    rename($processingJob->getPath(), $this->queue->getPendingDir() . '/' . $processingJob->getName());
+                    $this->jobState->markRequeue($processingJob);
                 }
 
                 $this->steps->finished([

@@ -129,6 +129,67 @@ function outgoingWebhookGetSyncServices(): array
 }
 
 /**
+ * Запись метрики Activity в таблицу activity_first_metrics.
+ * Вызывается из синхронного пути (ProcessActivitySync) и из очереди (handleCommentAdd).
+ *
+ * @param string $requestId ID запроса
+ * @param string $taskId ID задачи
+ * @param array $result Результат processActivityFirst (activityType, dealIds, fileIds, taskAttach, dealUpdates, file_name, file_size, author_id, comment_text, verified)
+ * @param bool $sync true = синхронная обработка, false = из очереди
+ * @param int|null $durationMs Длительность обработки в мс
+ */
+function outgoingWebhookWriteActivityFirstMetrics(
+    string $requestId,
+    string $taskId,
+    array $result,
+    bool $sync = true,
+    ?int $durationMs = null
+): void {
+    if (!outgoingWebhookContainer()->has('activityFirstMetricsRepository')) {
+        return;
+    }
+    $repo = outgoingWebhookContainer()->get('activityFirstMetricsRepository');
+    if ($repo === null) {
+        outgoingWebhookLogError('ActivityFirst metrics: repository is null (DB unavailable), skip insert', [
+            'requestId' => $requestId,
+            'taskId' => $taskId,
+        ]);
+        return;
+    }
+    $authorId = (string) ($result['author_id'] ?? '');
+    $authorName = '';
+    if ($authorId !== '' && outgoingWebhookContainer()->has('userResolver')) {
+        $resolver = outgoingWebhookContainer()->get('userResolver');
+        $authorName = $resolver->getDisplayName($authorId);
+    }
+    $repo->create([
+        'request_id' => $requestId,
+        'task_id' => $taskId,
+        'logged_at' => date('c'),
+        'sync' => $sync,
+        'duration_ms' => $durationMs,
+        'success' => true,
+        'files_count' => count($result['fileIds'] ?? []),
+        'deals_count' => count($result['dealIds'] ?? []),
+        'rate_limit_hit' => false,
+        'activity_type' => $result['activityType'] ?? '',
+        'deal_ids' => is_array($result['dealIds'] ?? null) ? implode(',', $result['dealIds']) : '',
+        'file_name' => $result['file_name'] ?? '',
+        'file_size' => $result['file_size'] ?? null,
+        'author_id' => $authorId,
+        'author_name' => $authorName,
+        'comment_text' => (string) ($result['comment_text'] ?? ''),
+        'result_full' => json_encode([
+            'task_attach' => $result['taskAttach'] ?? [],
+            'deal_updates' => $result['dealUpdates'] ?? [],
+            'file_name' => $result['file_name'] ?? '',
+            'file_size' => $result['file_size'] ?? null,
+            'verified' => $result['verified'] ?? [],
+        ], JSON_UNESCAPED_UNICODE),
+    ]);
+}
+
+/**
  * @deprecated Use outgoingWebhookProcessActivitySync() instead
  * Синхронная обработка ActivityFirst (старый формат)
  */
@@ -155,17 +216,58 @@ function outgoingWebhookProcessActivitySync(
     string $taskId,
     string $requestId
 ): bool {
-    // Проверка конфигурационного флага
-    $enabled = outgoingWebhookGetSetting('ACTIVITY_FIRST_SYNC_ENABLED', 'true');
-    if ($enabled !== 'true' && $enabled !== '1') {
-        return false;
-    }
-
     // Поддерживаем как новый формат (activityType), так и старый (activityFirst)
     $activityType = $commentDetails['activityType'] ?? null;
     $activityFirst = $commentDetails['activityFirst'] ?? false;
-    
+
     if ($activityType === null && !$activityFirst) {
+        return false;
+    }
+
+    // Вспомогательная запись «пропуск» в activity_first_metrics (чтобы видеть все события Activity)
+    $writeActivitySkipped = function (string $reason) use ($commentDetails, $taskId, $requestId): void {
+        if (!outgoingWebhookContainer()->has('activityFirstMetricsRepository')) {
+            return;
+        }
+        $repo = outgoingWebhookContainer()->get('activityFirstMetricsRepository');
+        if ($repo === null) {
+            outgoingWebhookLogError('ActivityFirst metrics: repository is null (DB unavailable)', [
+                'requestId' => $requestId,
+                'taskId' => $taskId,
+            ]);
+            return;
+        }
+        $crmLinks = $commentDetails['crmLinks'] ?? [];
+        $authorId = (string) ($commentDetails['authorId'] ?? '');
+        $authorName = '';
+        if ($authorId !== '' && outgoingWebhookContainer()->has('userResolver')) {
+            $resolver = outgoingWebhookContainer()->get('userResolver');
+            $authorName = $resolver->getDisplayName($authorId);
+        }
+        $repo->create([
+            'request_id' => $requestId,
+            'task_id' => $taskId,
+            'logged_at' => date('c'),
+            'sync' => true,
+            'duration_ms' => null,
+            'success' => false,
+            'files_count' => count($commentDetails['fileIds'] ?? []),
+            'deals_count' => is_array($crmLinks) ? count($crmLinks) : 0,
+            'rate_limit_hit' => 0,
+            'error' => $reason,
+            'activity_type' => $commentDetails['activityType'] ?? '',
+            'deal_ids' => is_array($crmLinks) ? implode(',', $crmLinks) : '',
+            'author_id' => $authorId,
+            'author_name' => $authorName,
+            'comment_text' => (string) ($commentDetails['message'] ?? ''),
+            'result_full' => json_encode(['skipped' => true, 'reason' => $reason], JSON_UNESCAPED_UNICODE),
+        ]);
+    };
+
+    // Проверка конфигурационного флага
+    $enabled = outgoingWebhookGetSetting('ACTIVITY_FIRST_SYNC_ENABLED', 'true');
+    if ($enabled !== 'true' && $enabled !== '1') {
+        $writeActivitySkipped('sync disabled');
         return false;
     }
 
@@ -179,6 +281,7 @@ function outgoingWebhookProcessActivitySync(
             'fileIds' => $fileIds,
             'dealIds' => $dealIds,
         ]);
+        $writeActivitySkipped('missing required data (fileIds or crmLinks)');
         return false;
     }
 
@@ -193,6 +296,7 @@ function outgoingWebhookProcessActivitySync(
             'requestId' => $requestId,
             'taskId' => $taskId,
         ]);
+        $writeActivitySkipped('cannot create lock file');
         return false;
     }
 
@@ -202,6 +306,7 @@ function outgoingWebhookProcessActivitySync(
             'requestId' => $requestId,
             'taskId' => $taskId,
         ]);
+        $writeActivitySkipped('rate limit exceeded');
         return false;
     }
 
@@ -266,33 +371,7 @@ function outgoingWebhookProcessActivitySync(
         $services['filesystem']->appendLine($metricsPath, json_encode($metrics, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
         // Запись метрик Activity в основную БД (activity_first_metrics)
-        if (outgoingWebhookContainer()->has('activityFirstMetricsRepository')) {
-            $repo = outgoingWebhookContainer()->get('activityFirstMetricsRepository');
-            if ($repo !== null) {
-                $repo->create([
-                    'request_id' => $requestId,
-                    'task_id' => $taskId,
-                    'logged_at' => $metrics['loggedAt'],
-                    'sync' => true,
-                    'duration_ms' => $durationMs,
-                    'success' => true,
-                    'files_count' => count($result['fileIds']),
-                    'deals_count' => count($result['dealIds']),
-                    'rate_limit_hit' => false,
-                    'activity_type' => $result['activityType'] ?? '',
-                    'deal_ids' => is_array($result['dealIds'] ?? null) ? implode(',', $result['dealIds']) : '',
-                    'file_name' => $result['file_name'] ?? '',
-                    'file_size' => $result['file_size'] ?? null,
-                    'result_full' => json_encode([
-                        'task_attach' => $result['taskAttach'] ?? [],
-                        'deal_updates' => $result['dealUpdates'] ?? [],
-                        'file_name' => $result['file_name'] ?? '',
-                        'file_size' => $result['file_size'] ?? null,
-                        'verified' => $result['verified'] ?? [],
-                    ], JSON_UNESCAPED_UNICODE),
-                ]);
-            }
-        }
+        outgoingWebhookWriteActivityFirstMetrics($requestId, $taskId, $result, true, $durationMs);
 
         flock($lockHandle, LOCK_UN);
         fclose($lockHandle);
@@ -336,6 +415,12 @@ function outgoingWebhookProcessActivitySync(
                 if (!empty($commentDetails['crmLinks']) && function_exists('outgoingWebhookExtractDealIds')) {
                     $dealIdsFromDetails = outgoingWebhookExtractDealIds($commentDetails['crmLinks']);
                 }
+                $authorId = (string) ($commentDetails['authorId'] ?? '');
+                $authorName = '';
+                if ($authorId !== '' && outgoingWebhookContainer()->has('userResolver')) {
+                    $resolver = outgoingWebhookContainer()->get('userResolver');
+                    $authorName = $resolver->getDisplayName($authorId);
+                }
                 $repo->create([
                     'request_id' => $requestId,
                     'task_id' => $taskId,
@@ -349,6 +434,9 @@ function outgoingWebhookProcessActivitySync(
                     'error' => $e->getMessage(),
                     'activity_type' => $commentDetails['activityType'] ?? '',
                     'deal_ids' => is_array($dealIdsFromDetails) ? implode(',', $dealIdsFromDetails) : '',
+                    'author_id' => $authorId,
+                    'author_name' => $authorName,
+                    'comment_text' => (string) ($commentDetails['message'] ?? ''),
                     'result_full' => json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_UNICODE),
                 ]);
             }

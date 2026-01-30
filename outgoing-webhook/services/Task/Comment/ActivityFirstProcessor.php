@@ -95,6 +95,8 @@ class ActivityFirstProcessor
             'fileIds' => $fileIds,
             'taskAttach' => $taskAttach,
             'dealUpdates' => $dealUpdates,
+            'author_id' => (string) ($commentDetails['authorId'] ?? ''),
+            'comment_text' => (string) ($commentDetails['message'] ?? ''),
         ];
     }
 }
