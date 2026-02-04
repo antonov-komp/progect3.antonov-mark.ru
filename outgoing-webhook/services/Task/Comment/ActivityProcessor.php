@@ -129,13 +129,58 @@ class ActivityProcessor
             );
         }
 
-        // Проверка успеха по факту наличия файлов: запрос файлов в задаче и в поле сделки
+        // Проверка успеха по факту наличия файлов
         $taskFilesAfter = $this->taskFiles->getAttachedFiles($entityId, $restCall);
         $verified_task_files_count = count($taskFilesAfter);
         $verified_deal_files_count = 0;
         if (!empty($dealIds)) {
             $firstDealFiles = $this->dealFiles->getDealFileField($dealIds[0], $dealField, $restCall);
             $verified_deal_files_count = count($firstDealFiles);
+        }
+
+        // Повторная попытка перезакачки/прикрепления при ненасыщенном результате (ERROR_CORE и т.п.)
+        $retryDelaySeconds = 2;
+        $needRetry = ($verified_task_files_count === 0 && !empty($taskAttach['errors']))
+            || ($verified_deal_files_count === 0 && !empty($fileIds));
+        $retried = false;
+        if ($needRetry) {
+            $retried = true;
+            if (function_exists('usleep') && $retryDelaySeconds > 0) {
+                usleep($retryDelaySeconds * 1000000);
+            }
+            // Повтор: прикрепление к задаче
+            $taskAttachRetry = $this->taskFiles->attachFiles($entityId, $fileIds, $restCall);
+            if (!empty($taskAttachRetry['attached'])) {
+                $taskAttach['attached'] = array_values(array_unique(array_merge($taskAttach['attached'], $taskAttachRetry['attached'])));
+            }
+            if (!empty($taskAttachRetry['errors'])) {
+                $taskAttach['errors'] = array_merge($taskAttach['errors'], $taskAttachRetry['errors']);
+            }
+            // Повтор: пересборка fileData и обновление сделок (перезакачка через disk.file.get)
+            $fileDataListRetry = [];
+            foreach ($fileIds as $fileId) {
+                $fileData = $this->dealFiles->buildDealFileData($fileId, $restCall);
+                if ($fileData !== null) {
+                    $fileDataListRetry[] = ['fileData' => $fileData];
+                }
+            }
+            if (!empty($fileDataListRetry)) {
+                $dealUpdates = [];
+                foreach ($dealIds as $dealId) {
+                    $dealUpdates[] = array_merge(
+                        ['dealId' => $dealId],
+                        $this->dealFiles->updateDealFiles($dealId, $dealField, $fileDataListRetry, $restCall)
+                    );
+                }
+            }
+            // Повторная верификация
+            $taskFilesAfter = $this->taskFiles->getAttachedFiles($entityId, $restCall);
+            $verified_task_files_count = count($taskFilesAfter);
+            $verified_deal_files_count = 0;
+            if (!empty($dealIds)) {
+                $firstDealFiles = $this->dealFiles->getDealFileField($dealIds[0], $dealField, $restCall);
+                $verified_deal_files_count = count($firstDealFiles);
+            }
         }
 
         return [
@@ -149,6 +194,7 @@ class ActivityProcessor
             'file_size' => $file_size,
             'author_id' => (string) ($commentDetails['authorId'] ?? ''),
             'comment_text' => (string) ($commentDetails['message'] ?? ''),
+            'retried' => $retried,
             'verified' => [
                 'task_files_count' => $verified_task_files_count,
                 'deal_files_count' => $verified_deal_files_count,

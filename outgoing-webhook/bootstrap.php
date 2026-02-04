@@ -162,16 +162,24 @@ function outgoingWebhookWriteActivityFirstMetrics(
         $resolver = outgoingWebhookContainer()->get('userResolver');
         $authorName = $resolver->getDisplayName($authorId);
     }
+    // Успех по факту насыщения: файлы попали в задачу или в сделку (verified)
+    $verified = $result['verified'] ?? [];
+    $taskCount = (int) ($verified['task_files_count'] ?? 0);
+    $dealCount = (int) ($verified['deal_files_count'] ?? 0);
+    $hasVerified = array_key_exists('task_files_count', $verified) || array_key_exists('deal_files_count', $verified);
+    $saturated = $hasVerified ? ($taskCount > 0 || $dealCount > 0) : true;
+    $errorNote = ($hasVerified && !$saturated) ? 'no files in task or deal (verified)' : null;
     $repo->create([
         'request_id' => $requestId,
         'task_id' => $taskId,
         'logged_at' => date('c'),
         'sync' => $sync,
         'duration_ms' => $durationMs,
-        'success' => true,
+        'success' => $saturated,
         'files_count' => count($result['fileIds'] ?? []),
         'deals_count' => count($result['dealIds'] ?? []),
         'rate_limit_hit' => false,
+        'error' => $errorNote,
         'activity_type' => $result['activityType'] ?? '',
         'deal_ids' => is_array($result['dealIds'] ?? null) ? implode(',', $result['dealIds']) : '',
         'file_name' => $result['file_name'] ?? '',
@@ -184,6 +192,7 @@ function outgoingWebhookWriteActivityFirstMetrics(
             'deal_updates' => $result['dealUpdates'] ?? [],
             'file_name' => $result['file_name'] ?? '',
             'file_size' => $result['file_size'] ?? null,
+            'retried' => !empty($result['retried']),
             'verified' => $result['verified'] ?? [],
         ], JSON_UNESCAPED_UNICODE),
     ]);
