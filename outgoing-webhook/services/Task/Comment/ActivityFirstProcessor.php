@@ -12,15 +12,18 @@ class ActivityFirstProcessor
     private TaskDetailsService $taskDetails;
     private TaskFilesService $taskFiles;
     private DealFileService $dealFiles;
+    private ConfigService $config;
 
     public function __construct(
         TaskDetailsService $taskDetails,
         TaskFilesService $taskFiles,
-        DealFileService $dealFiles
+        DealFileService $dealFiles,
+        ConfigService $config
     ) {
         $this->taskDetails = $taskDetails;
         $this->taskFiles = $taskFiles;
         $this->dealFiles = $dealFiles;
+        $this->config = $config;
     }
 
     /**
@@ -83,10 +86,11 @@ class ActivityFirstProcessor
             }
         }
 
+        $entityTypeId = $this->resolveEntityTypeId();
         foreach ($dealIds as $dealId) {
             $dealUpdates[] = array_merge(
                 ['dealId' => $dealId],
-                $this->dealFiles->updateDealFiles($dealId, 'UF_CRM_1759233362672', $fileDataList, $restCall)
+                $this->dealFiles->updateDealFiles($dealId, 'UF_CRM_1759233362672', $fileDataList, $restCall, $entityTypeId)
             );
         }
 
@@ -98,5 +102,11 @@ class ActivityFirstProcessor
             'author_id' => (string) ($commentDetails['authorId'] ?? ''),
             'comment_text' => (string) ($commentDetails['message'] ?? ''),
         ];
+    }
+
+    private function resolveEntityTypeId(): int
+    {
+        $value = (int) ($this->config->get('ACTIVITY_ENTITY_TYPE_ID', '2') ?? 2);
+        return $value > 0 ? $value : 2;
     }
 }

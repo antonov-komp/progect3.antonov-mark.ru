@@ -256,12 +256,21 @@ class ServiceContainer
                 $this->get('errors')
             );
         };
+
+        // REST через вебхук (Activity-поток)
+        $this->factories['restWebhook'] = function() {
+            return new RestWebhookService(
+                $this->get('config'),
+                $this->get('errors')
+            );
+        };
         
         // CommentDetailsService (может быть null для rest)
         $this->factories['commentDetails'] = function() {
             $commentDetailsRepo = $this->has('commentDetailsRepository') ? $this->get('commentDetailsRepository') : null;
             return new CommentDetailsService(
                 $this->get('rest'),
+                $this->get('restWebhook'),
                 $this->get('errors'),
                 $this->get('taskDetails'),
                 $this->get('taskFiles'),

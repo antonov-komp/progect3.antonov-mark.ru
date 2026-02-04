@@ -16,6 +16,7 @@ require_once __DIR__ . '/Logging/ErrorService.php';
 require_once __DIR__ . '/Logging/LogValueFormatter.php';
 require_once __DIR__ . '/Logging/QueueStepLogger.php';
 require_once __DIR__ . '/Rest/RestService.php';
+require_once __DIR__ . '/Rest/RestWebhookService.php';
 require_once __DIR__ . '/Dicts/DictCacheService.php';
 require_once __DIR__ . '/Enrichment/ValueComparator.php';
 require_once __DIR__ . '/Enrichment/StateStorage.php';

@@ -22,15 +22,18 @@ class ActivityProcessor
     private TaskDetailsService $taskDetails;
     private TaskFilesService $taskFiles;
     private DealFileService $dealFiles;
+    private ConfigService $config;
 
     public function __construct(
         TaskDetailsService $taskDetails,
         TaskFilesService $taskFiles,
-        DealFileService $dealFiles
+        DealFileService $dealFiles,
+        ConfigService $config
     ) {
         $this->taskDetails = $taskDetails;
         $this->taskFiles = $taskFiles;
         $this->dealFiles = $dealFiles;
+        $this->config = $config;
     }
 
     /**
@@ -121,11 +124,12 @@ class ActivityProcessor
         }
 
         // Обновление файлов в сделках (с правильным полем для типа Activity)
+        $entityTypeId = $this->resolveEntityTypeId();
         $dealUpdates = [];
         foreach ($dealIds as $dealId) {
             $dealUpdates[] = array_merge(
                 ['dealId' => $dealId],
-                $this->dealFiles->updateDealFiles($dealId, $dealField, $fileDataList, $restCall)
+                $this->dealFiles->updateDealFiles($dealId, $dealField, $fileDataList, $restCall, $entityTypeId)
             );
         }
 
@@ -134,7 +138,7 @@ class ActivityProcessor
         $verified_task_files_count = count($taskFilesAfter);
         $verified_deal_files_count = 0;
         if (!empty($dealIds)) {
-            $firstDealFiles = $this->dealFiles->getDealFileField($dealIds[0], $dealField, $restCall);
+            $firstDealFiles = $this->dealFiles->getDealFileField($dealIds[0], $dealField, $restCall, $entityTypeId);
             $verified_deal_files_count = count($firstDealFiles);
         }
 
@@ -169,7 +173,7 @@ class ActivityProcessor
                 foreach ($dealIds as $dealId) {
                     $dealUpdates[] = array_merge(
                         ['dealId' => $dealId],
-                        $this->dealFiles->updateDealFiles($dealId, $dealField, $fileDataListRetry, $restCall)
+                        $this->dealFiles->updateDealFiles($dealId, $dealField, $fileDataListRetry, $restCall, $entityTypeId)
                     );
                 }
             }
@@ -178,7 +182,7 @@ class ActivityProcessor
             $verified_task_files_count = count($taskFilesAfter);
             $verified_deal_files_count = 0;
             if (!empty($dealIds)) {
-                $firstDealFiles = $this->dealFiles->getDealFileField($dealIds[0], $dealField, $restCall);
+                $firstDealFiles = $this->dealFiles->getDealFileField($dealIds[0], $dealField, $restCall, $entityTypeId);
                 $verified_deal_files_count = count($firstDealFiles);
             }
         }
@@ -200,5 +204,11 @@ class ActivityProcessor
                 'deal_files_count' => $verified_deal_files_count,
             ],
         ];
+    }
+
+    private function resolveEntityTypeId(): int
+    {
+        $value = (int) ($this->config->get('ACTIVITY_ENTITY_TYPE_ID', '2') ?? 2);
+        return $value > 0 ? $value : 2;
     }
 }

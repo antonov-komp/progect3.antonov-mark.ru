@@ -146,9 +146,14 @@ class DealFileService
         return [$name, $base64];
     }
 
-    public function getDealFileField(string $dealId, string $field, callable $restCall): array
+    public function getDealFileField(string $dealId, string $field, callable $restCall, int $entityTypeId = 2): array
     {
-        $result = $restCall('crm.deal.get', ['id' => (int) $dealId]);
+        $method = $entityTypeId === 2 ? 'crm.deal.get' : 'crm.item.get';
+        $payload = $entityTypeId === 2
+            ? ['id' => (int) $dealId]
+            : ['entityTypeId' => $entityTypeId, 'id' => (int) $dealId];
+
+        $result = $restCall($method, $payload);
         if (!is_array($result) || !empty($result['error'])) {
             return [];
         }
@@ -321,9 +326,15 @@ class DealFileService
         return null;
     }
 
-    public function updateDealFiles(string $dealId, string $field, array $fileDataList, callable $restCall): array
+    public function updateDealFiles(
+        string $dealId,
+        string $field,
+        array $fileDataList,
+        callable $restCall,
+        int $entityTypeId = 2
+    ): array
     {
-        $existingIds = $this->getDealFileField($dealId, $field, $restCall);
+        $existingIds = $this->getDealFileField($dealId, $field, $restCall, $entityTypeId);
         $payload = [];
         $errors = [];
 
@@ -360,17 +371,29 @@ class DealFileService
             ]);
         }
 
-        $result = $restCall('crm.deal.update', [
-            'id' => (int) $dealId,
-            'fields' => [
-                $field => $payload,
-            ],
-        ]);
+        $method = $entityTypeId === 2 ? 'crm.deal.update' : 'crm.item.update';
+        $updatePayload = $entityTypeId === 2
+            ? [
+                'id' => (int) $dealId,
+                'fields' => [
+                    $field => $payload,
+                ],
+            ]
+            : [
+                'entityTypeId' => $entityTypeId,
+                'id' => (int) $dealId,
+                'fields' => [
+                    $field => $payload,
+                ],
+            ];
+
+        $result = $restCall($method, $updatePayload);
 
         if (!is_array($result) || !empty($result['error'])) {
-            $this->errors->log('DealFileService::updateDealFiles — crm.deal.update ошибка', [
+            $this->errors->log('DealFileService::updateDealFiles — webhook crm update ошибка', [
                 'dealId' => $dealId,
                 'field' => $field,
+                'entityTypeId' => $entityTypeId,
                 'error' => $result['error'] ?? 'unknown',
                 'error_description' => $result['error_description'] ?? null,
                 'response' => $result,

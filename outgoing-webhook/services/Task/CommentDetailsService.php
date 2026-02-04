@@ -14,6 +14,7 @@ declare(strict_types=1);
 class CommentDetailsService
 {
     private ?RestService $rest;
+    private RestWebhookService $restWebhook;
     private ErrorService $errors;
     private CommentFetcher $fetcher;
     private CommentBuilder $builder;
@@ -29,6 +30,7 @@ class CommentDetailsService
 
     public function __construct(
         ?RestService $rest,
+        RestWebhookService $restWebhook,
         ErrorService $errors,
         TaskDetailsService $taskDetails,
         TaskFilesService $taskFiles,
@@ -41,6 +43,7 @@ class CommentDetailsService
         ?CommentDetailsRepository $commentDetailsRepository = null
     ) {
         $this->rest = $rest;
+        $this->restWebhook = $restWebhook;
         $this->errors = $errors;
         $this->identity = $identity;
         $this->taskDetails = $taskDetails;
@@ -70,8 +73,8 @@ class CommentDetailsService
         $this->builder = new CommentBuilder($identity, $request, $taskDetails, $errors);
         $this->formatter = new CommentFormatter($formatter);
         $this->writer = new CommentWriter($filesystem, $config, $request, $this->formatter, $commentDetailsRepository);
-        $this->activityFirst = new ActivityFirstProcessor($taskDetails, $taskFiles, $dealFiles); // Для обратной совместимости
-        $this->activityProcessor = new ActivityProcessor($taskDetails, $taskFiles, $dealFiles);
+        $this->activityFirst = new ActivityFirstProcessor($taskDetails, $taskFiles, $dealFiles, $config); // Для обратной совместимости
+        $this->activityProcessor = new ActivityProcessor($taskDetails, $taskFiles, $dealFiles, $config);
     }
 
     /**
@@ -179,9 +182,22 @@ class CommentDetailsService
             $requestId = $job['requestId'] ?? 'unknown';
             $activityStart = microtime(true);
 
+            $webhookContext = [
+                'taskId' => $entityId,
+                'requestId' => $requestId,
+                'activityType' => $activityType ?? (($commentDetails['activityFirst'] ?? false) ? 'activity_first' : null),
+                'dealIds' => $commentDetails['crmLinks'] ?? [],
+                'commentId' => $commentId,
+            ];
+            $restCallWebhook = fn(string $method, array $params = []) => $this->restWebhook->call(
+                $method,
+                $params,
+                $webhookContext
+            );
+
             if ($activityType !== null && is_string($activityType)) {
                 // Использование нового ActivityProcessor с типом Activity
-                $result = $this->activityProcessor->process($commentDetails, $activityType, $entityId, $restCall);
+                $result = $this->activityProcessor->process($commentDetails, $activityType, $entityId, $restCallWebhook);
                 $this->taskDetails->logActivityFirst([
                     'loggedAt' => $this->request->now(),
                     'requestId' => $requestId,
@@ -199,7 +215,7 @@ class CommentDetailsService
                 }
             } elseif (!empty($commentDetails['activityFirst'])) {
                 // Обратная совместимость: использование старого ActivityFirstProcessor
-                $result = $this->activityFirst->process($commentDetails, $entityId, $restCall);
+                $result = $this->activityFirst->process($commentDetails, $entityId, $restCallWebhook);
                 $this->taskDetails->logActivityFirst([
                     'loggedAt' => $this->request->now(),
                     'requestId' => $requestId,

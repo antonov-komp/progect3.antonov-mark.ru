@@ -118,6 +118,7 @@ function outgoingWebhookGetSyncServices(): array
         'formatter' => $container->get('formatter'),
         'errors' => $container->get('errors'),
         'rest' => $container->get('rest'),
+        'restWebhook' => $container->get('restWebhook'),
         'taskDetails' => $container->get('taskDetails'),
         'taskFiles' => $container->get('taskFiles'),
         'dealFiles' => $container->get('dealFiles'),
@@ -323,7 +324,12 @@ function outgoingWebhookProcessActivitySync(
 
     try {
         $services = outgoingWebhookGetSyncServices();
-        $restCall = fn(string $method, array $params = []) => $services['rest']->call($method, $params);
+        $restCall = fn(string $method, array $params = []) => $services['restWebhook']->call($method, $params, [
+            'taskId' => $taskId,
+            'requestId' => $requestId,
+            'activityType' => $activityType ?? (($commentDetails['activityFirst'] ?? false) ? 'activity_first' : null),
+            'dealIds' => $commentDetails['crmLinks'] ?? [],
+        ]);
         
         $result = $services['commentDetailsService']->processActivityFirst(
             $commentDetails,
