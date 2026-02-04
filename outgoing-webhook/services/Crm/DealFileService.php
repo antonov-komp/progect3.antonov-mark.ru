@@ -350,21 +350,42 @@ class DealFileService
         $payload = [];
         $errors = [];
 
-        // Перезагружаем существующие файлы через Base64 с правильными именами
-        // Это необходимо, так как Bitrix24 требует все файлы в формате ['fileData' => [имя, base64]]
+        // Обязательное сохранение существующих файлов через fileData.
+        // Если не удаётся извлечь существующий файл – прерываем обновление, чтобы не потерять файлы.
         foreach ($existingIds as $entry) {
-            if (!is_array($entry)) {
-                // Если это просто ID (скаляр), пропускаем (не можем получить информацию)
-                $errors[] = ['fileId' => (string) $entry, 'error' => 'scalar_id_not_supported'];
-                continue;
+            if (is_array($entry)) {
+                $fileData = $this->buildFromDealEntry($entry, $restCall);
+                if ($fileData === null) {
+                    return [
+                        'success' => false,
+                        'error' => 'failed_to_preserve_existing_file',
+                        'fileErrors' => [['fileId' => $entry['id'] ?? 'unknown', 'error' => 'build_filedata_failed']],
+                    ];
+                }
+                $payload[] = ['fileData' => $fileData];
+            } else {
+                $fileId = (string) $entry;
+                $info = $this->taskFiles->getDiskFileInfo($fileId, $restCall);
+                if (!is_array($info)) {
+                    return [
+                        'success' => false,
+                        'error' => 'failed_to_preserve_existing_file',
+                        'fileErrors' => [['fileId' => $fileId, 'error' => 'disk_file_get_failed']],
+                    ];
+                }
+                $downloadUrl = $info['downloadUrl'] ?? $info['DOWNLOAD_URL'] ?? null;
+                $name = $this->resolveFileName($info, 'file_' . $fileId, $downloadUrl);
+                $downloadUrl = is_string($downloadUrl) ? $this->request->resolveAbsoluteUrl($downloadUrl) : null;
+                $base64 = $downloadUrl ? $this->filesystem->downloadBase64($downloadUrl) : null;
+                if ($base64 === null) {
+                    return [
+                        'success' => false,
+                        'error' => 'failed_to_preserve_existing_file',
+                        'fileErrors' => [['fileId' => $fileId, 'error' => 'download_failed']],
+                    ];
+                }
+                $payload[] = ['fileData' => [$name, $base64]];
             }
-            
-            $fileData = $this->buildFromDealEntry($entry, $restCall);
-            if ($fileData === null) {
-                $errors[] = ['fileId' => $entry['id'] ?? 'unknown', 'error' => 'failed_to_load_existing_file'];
-                continue;
-            }
-            $payload[] = ['fileData' => $fileData];
         }
 
         // Новые файлы добавляем в формате ['fileData' => [имя, base64]]
