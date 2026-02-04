@@ -192,6 +192,15 @@ class DealFileService
 
     public function buildFromDealEntry(array $entry, callable $restCall): ?array
     {
+        // Попробуем сохранить имя из записи поля сделки, если оно там есть
+        $entryName = null;
+        foreach (['NAME', 'name', 'ORIGINAL_NAME', 'originalName', 'fileName'] as $key) {
+            if (isset($entry[$key]) && is_string($entry[$key]) && trim($entry[$key]) !== '') {
+                $entryName = trim((string) $entry[$key]);
+                break;
+            }
+        }
+
         // ID из поля сделки (например, 45451) - это НЕ ID файла в disk
         // Это ID записи в поле сделки, поэтому disk.file.get не работает
         // Нужно загружать файл через downloadUrl и определять имя по содержимому или другим способом
@@ -229,7 +238,7 @@ class DealFileService
             return null;
         }
 
-        // Определяем имя файла
+        // Определяем имя файла, стараясь сохранить исходное имя из поля сделки
         $name = null;
         
         // Если получили информацию из disk.file.get, используем её
@@ -240,21 +249,24 @@ class DealFileService
             $mimeType = $this->detectMimeTypeFromBase64($base64);
             $ext = $mimeType !== null ? $this->getExtensionFromMimeType($mimeType) : null;
             
+            // Сначала попробуем имя из записи поля сделки
+            if ($entryName !== null) {
+                $name = $entryName;
+            }
+            
             // Пытаемся определить имя из URL (если не подозрительное)
-            $path = parse_url($resolvedUrl, PHP_URL_PATH);
-            if (is_string($path) && $path !== '') {
-                $basename = basename($path);
-                $urlExt = strtolower(pathinfo($basename, PATHINFO_EXTENSION));
-                // Если имя из URL подозрительное (show_file.php), не используем его
-                if ($basename !== '' && !in_array($urlExt, ['php', 'html', 'htm', 'js', 'css'], true)) {
-                    $name = $basename;
-                    // Если расширения нет, но мы определили его по содержимому - добавляем
-                    if ($ext !== null && pathinfo($name, PATHINFO_EXTENSION) === '') {
-                        $name .= '.' . $ext;
+            if ($name === null) {
+                $path = parse_url($resolvedUrl, PHP_URL_PATH);
+                if (is_string($path) && $path !== '') {
+                    $basename = basename($path);
+                    $urlExt = strtolower(pathinfo($basename, PATHINFO_EXTENSION));
+                    // Если имя из URL подозрительное (show_file.php), не используем его
+                    if ($basename !== '' && !in_array($urlExt, ['php', 'html', 'htm', 'js', 'css'], true)) {
+                        $name = $basename;
                     }
                 }
             }
-            
+
             // Если имя не определили, создаём с правильным расширением
             if ($name === null || $name === '') {
                 $id = $realFileId ?? $entry['id'] ?? 'file';

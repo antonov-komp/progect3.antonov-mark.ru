@@ -27,6 +27,7 @@ class CommentDetailsService
     private RequestService $request;
     private ConfigService $config;
     private ?CommentDetailsRepository $commentDetailsRepository;
+    private ?string $webhookUserId = null;
 
     public function __construct(
         ?RestService $rest,
@@ -194,6 +195,14 @@ class CommentDetailsService
                 $params,
                 $webhookContext
             );
+
+            // Попытка дать вебхук-пользователю доступ к файлам: добавить его в чат задачи (если chatId известен)
+            $chatId = is_array($taskData) ? $this->extractChatId($taskData) : null;
+            if ($chatId !== null) {
+                $this->ensureWebhookUserInChat($chatId, $restCallWebhook);
+            }
+            // Попытка дать доступ к задаче: добавить вебхук-пользователя в аудиторы (если его нет)
+            $this->ensureWebhookUserInTask($entityId, $taskData ?? null, $restCallWebhook);
 
             if ($activityType !== null && is_string($activityType)) {
                 // Использование нового ActivityProcessor с типом Activity
@@ -403,6 +412,108 @@ class CommentDetailsService
         } else {
             // Обратная совместимость: использование старого ActivityFirstProcessor
             return $this->activityFirst->process($commentDetails, $entityId, $restCall);
+        }
+    }
+
+    private function ensureWebhookUserInChat(string $chatId, callable $restCallWebhook): void
+    {
+        $userId = $this->getWebhookUserId($restCallWebhook);
+        if ($userId === null) {
+            $this->errors->log('webhook-mode: cannot resolve webhook user for chat join', [
+                'chatId' => $chatId,
+            ]);
+            return;
+        }
+
+        $resp = $restCallWebhook('im.chat.user.add', [
+            'CHAT_ID' => (int) $chatId,
+            'USERS' => [(int) $userId],
+        ]);
+
+        if (!is_array($resp) || !empty($resp['error'])) {
+            $this->errors->log('webhook-mode: failed to add user to chat', [
+                'chatId' => $chatId,
+                'userId' => $userId,
+                'error' => $resp['error'] ?? 'unknown',
+                'error_description' => $resp['error_description'] ?? null,
+                'response' => $resp,
+            ]);
+        }
+    }
+
+    private function getWebhookUserId(callable $restCallWebhook): ?string
+    {
+        if ($this->webhookUserId !== null) {
+            return $this->webhookUserId;
+        }
+
+        $resp = $restCallWebhook('user.current', []);
+        if (!is_array($resp) || !empty($resp['error'])) {
+            return null;
+        }
+
+        $user = $resp['result'] ?? null;
+        if (!is_array($user)) {
+            return null;
+        }
+
+        $id = $user['ID'] ?? $user['id'] ?? null;
+        $id = is_scalar($id) ? (string) $id : null;
+        if ($id === null || $id === '') {
+            return null;
+        }
+
+        $this->webhookUserId = $id;
+        return $id;
+    }
+
+    private function ensureWebhookUserInTask(string $taskId, ?array $taskData, callable $restCallWebhook): void
+    {
+        $userId = $this->getWebhookUserId($restCallWebhook);
+        if ($userId === null) {
+            $this->errors->log('webhook-mode: cannot resolve webhook user for task add', [
+                'taskId' => $taskId,
+            ]);
+            return;
+        }
+
+        // Если taskData не переданы или пустые — пробуем загрузить задачу
+        if (!is_array($taskData)) {
+            $taskResp = $restCallWebhook('tasks.task.get', ['id' => (int) $taskId]);
+            $taskPayload = $taskResp['result'] ?? $taskResp;
+            $taskData = is_array($taskPayload) ? ($taskPayload['task'] ?? $taskPayload) : null;
+        }
+
+        if (!is_array($taskData)) {
+            return;
+        }
+
+        $auditors = isset($taskData['auditors']) && is_array($taskData['auditors']) ? $taskData['auditors'] : [];
+        $accomplices = isset($taskData['accomplices']) && is_array($taskData['accomplices']) ? $taskData['accomplices'] : [];
+
+        $already = in_array((string) $userId, array_map('strval', $auditors), true)
+            || in_array((string) $userId, array_map('strval', $accomplices), true);
+        if ($already) {
+            return;
+        }
+
+        $auditors[] = (int) $userId;
+
+        $resp = $restCallWebhook('tasks.task.update', [
+            'taskId' => (int) $taskId,
+            'fields' => [
+                'AUDITORS' => $auditors,
+            ],
+        ]);
+
+        if (!is_array($resp) || !empty($resp['error'])) {
+            $this->errors->log('webhook-mode: failed to add user to task auditors', [
+                'taskId' => $taskId,
+                'userId' => $userId,
+                'error' => $resp['error'] ?? 'unknown',
+                'error_description' => $resp['error_description'] ?? null,
+                'response' => $resp,
+            ]);
         }
     }
 }
