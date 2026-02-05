@@ -331,10 +331,17 @@ function outgoingWebhookProcessActivitySync(
             'dealIds' => $commentDetails['crmLinks'] ?? [],
         ]);
         
+        $context = [
+            'requestId' => $requestId,
+            'taskId' => $taskId,
+            'activityType' => $activityType ?? (($commentDetails['activityFirst'] ?? false) ? 'activity_first' : null),
+        ];
+        
         $result = $services['commentDetailsService']->processActivityFirst(
             $commentDetails,
             $taskId,
-            $restCall
+            $restCall,
+            $context
         );
 
         $durationMs = (int) ((microtime(true) - $startTime) * 1000);

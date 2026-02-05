@@ -50,7 +50,8 @@ class ActivityProcessor
         array $commentDetails,
         string $activityType,
         string $entityId,
-        callable $restCall
+        callable $restCall,
+        array $context = []
     ): array {
         // Валидация входных данных
         if (empty($entityId) || !is_string($entityId)) {
@@ -94,32 +95,54 @@ class ActivityProcessor
             throw new InvalidArgumentException('Invalid activity type or deal field: ' . $activityType);
         }
 
-        // Имя и размер первого файла (disk.file.get: NAME с расширением, SIZE)
-        $firstFileId = $fileIds[0] ?? null;
-        $file_name = '';
-        $file_size = null;
-        if ($firstFileId !== null) {
-            $fileInfo = $this->taskFiles->getDiskFileInfo((string) $firstFileId, $restCall);
-            if (is_array($fileInfo)) {
-                $file_name = (string) ($fileInfo['NAME'] ?? $fileInfo['name'] ?? '');
-                $size = $fileInfo['SIZE'] ?? $fileInfo['size'] ?? null;
-                $file_size = is_numeric($size) ? (int) $size : null;
-            }
-        }
-
         // Прикрепление файлов к задаче (fileId из чата = ID диска, подходит для задачи)
         $taskAttach = ['attached' => [], 'errors' => []];
         if (!empty($fileIds)) {
             $taskAttach = $this->taskFiles->attachFiles($entityId, $fileIds, $restCall);
         }
 
+        // Формируем контекст для логирования
+        $context = [
+            'taskId' => $entityId,
+            'activityType' => $activityType,
+            'dealField' => $dealField,
+            'dealIds' => $dealIds,
+            'fileIds' => $fileIds,
+        ];
+
         // Построение данных файлов для сделки: ID в сделку не подставляем — хранилище другое.
         // Получаем контент (disk.file.get → downloadUrl → base64) и передаём fileData в crm.deal.update.
+        // Используем имя файла из buildDealFileData(), так как оно правильно обрабатывает расширения через resolveFileName()
         $fileDataList = [];
-        foreach ($fileIds as $fileId) {
-            $fileData = $this->dealFiles->buildDealFileData($fileId, $restCall);
+        $file_name = '';
+        $file_size = null;
+        $firstFileId = $fileIds[0] ?? null;
+        $processedFiles = [];
+        
+        foreach ($fileIds as $index => $fileId) {
+            $fileData = $this->dealFiles->buildDealFileData($fileId, $restCall, array_merge($context, [
+                'fileIndex' => $index,
+            ]));
             if ($fileData !== null) {
                 $fileDataList[] = ['fileData' => $fileData];
+                $processedFiles[] = [
+                    'fileId' => $fileId,
+                    'fileName' => $fileData[0] ?? null,
+                    'hasExtension' => !empty(pathinfo($fileData[0] ?? '', PATHINFO_EXTENSION)),
+                ];
+                
+                // Для первого файла сохраняем имя и размер для метрик
+                // Имя берём из buildDealFileData(), так как оно правильно обработано через resolveFileName()
+                if ($fileId === $firstFileId) {
+                    $file_name = $fileData[0] ?? ''; // Имя файла из buildDealFileData()
+                    
+                    // Размер получаем из disk.file.get
+                    $fileInfo = $this->taskFiles->getDiskFileInfo((string) $fileId, $restCall);
+                    if (is_array($fileInfo)) {
+                        $size = $fileInfo['SIZE'] ?? $fileInfo['size'] ?? null;
+                        $file_size = is_numeric($size) ? (int) $size : null;
+                    }
+                }
             }
         }
 
@@ -127,9 +150,17 @@ class ActivityProcessor
         $entityTypeId = $this->resolveEntityTypeId();
         $dealUpdates = [];
         foreach ($dealIds as $dealId) {
+            $dealUpdateResult = $this->dealFiles->updateDealFiles(
+                $dealId, 
+                $dealField, 
+                $fileDataList, 
+                $restCall, 
+                $entityTypeId,
+                array_merge($context, ['dealId' => $dealId])
+            );
             $dealUpdates[] = array_merge(
                 ['dealId' => $dealId],
-                $this->dealFiles->updateDealFiles($dealId, $dealField, $fileDataList, $restCall, $entityTypeId)
+                $dealUpdateResult
             );
         }
 
@@ -162,8 +193,11 @@ class ActivityProcessor
             }
             // Повтор: пересборка fileData и обновление сделок (перезакачка через disk.file.get)
             $fileDataListRetry = [];
-            foreach ($fileIds as $fileId) {
-                $fileData = $this->dealFiles->buildDealFileData($fileId, $restCall);
+            foreach ($fileIds as $index => $fileId) {
+                $fileData = $this->dealFiles->buildDealFileData($fileId, $restCall, array_merge($context, [
+                    'fileIndex' => $index,
+                    'retry' => true,
+                ]));
                 if ($fileData !== null) {
                     $fileDataListRetry[] = ['fileData' => $fileData];
                 }
@@ -171,9 +205,17 @@ class ActivityProcessor
             if (!empty($fileDataListRetry)) {
                 $dealUpdates = [];
                 foreach ($dealIds as $dealId) {
+                    $dealUpdateResult = $this->dealFiles->updateDealFiles(
+                        $dealId, 
+                        $dealField, 
+                        $fileDataListRetry, 
+                        $restCall, 
+                        $entityTypeId,
+                        array_merge($context, ['dealId' => $dealId, 'retry' => true])
+                    );
                     $dealUpdates[] = array_merge(
                         ['dealId' => $dealId],
-                        $this->dealFiles->updateDealFiles($dealId, $dealField, $fileDataListRetry, $restCall, $entityTypeId)
+                        $dealUpdateResult
                     );
                 }
             }

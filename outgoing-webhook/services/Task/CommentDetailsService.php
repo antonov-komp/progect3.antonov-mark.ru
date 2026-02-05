@@ -206,7 +206,12 @@ class CommentDetailsService
 
             if ($activityType !== null && is_string($activityType)) {
                 // Использование нового ActivityProcessor с типом Activity
-                $result = $this->activityProcessor->process($commentDetails, $activityType, $entityId, $restCallWebhook);
+                $context = [
+                    'requestId' => $requestId,
+                    'taskId' => $entityId,
+                    'activityType' => $activityType,
+                ];
+                $result = $this->activityProcessor->process($commentDetails, $activityType, $entityId, $restCallWebhook, $context);
                 $this->taskDetails->logActivityFirst([
                     'loggedAt' => $this->request->now(),
                     'requestId' => $requestId,
@@ -402,13 +407,14 @@ class CommentDetailsService
     public function processActivityFirst(
         array $commentDetails,
         string $entityId,
-        callable $restCall
+        callable $restCall,
+        array $context = []
     ): array {
         $activityType = $commentDetails['activityType'] ?? null;
         
         if ($activityType !== null && is_string($activityType)) {
             // Использование нового ActivityProcessor с типом Activity
-            return $this->activityProcessor->process($commentDetails, $activityType, $entityId, $restCall);
+            return $this->activityProcessor->process($commentDetails, $activityType, $entityId, $restCall, $context);
         } else {
             // Обратная совместимость: использование старого ActivityFirstProcessor
             return $this->activityFirst->process($commentDetails, $entityId, $restCall);

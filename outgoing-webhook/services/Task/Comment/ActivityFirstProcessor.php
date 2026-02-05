@@ -80,7 +80,10 @@ class ActivityFirstProcessor
         $dealUpdates = [];
         $fileDataList = [];
         foreach ($fileIds as $fileId) {
-            $fileData = $this->dealFiles->buildDealFileData($fileId, $restCall);
+            $fileData = $this->dealFiles->buildDealFileData($fileId, $restCall, [
+                'taskId' => $entityId,
+                'activityType' => 'activity_first', // Старый формат
+            ]);
             if ($fileData !== null) {
                 $fileDataList[] = ['fileData' => $fileData];
             }
@@ -90,7 +93,11 @@ class ActivityFirstProcessor
         foreach ($dealIds as $dealId) {
             $dealUpdates[] = array_merge(
                 ['dealId' => $dealId],
-                $this->dealFiles->updateDealFiles($dealId, 'UF_CRM_1759233362672', $fileDataList, $restCall, $entityTypeId)
+                $this->dealFiles->updateDealFiles($dealId, 'UF_CRM_1759233362672', $fileDataList, $restCall, $entityTypeId, [
+                    'taskId' => $entityId,
+                    'activityType' => 'activity_first', // Старый формат
+                    'dealId' => $dealId,
+                ])
             );
         }
 
