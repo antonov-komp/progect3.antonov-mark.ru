@@ -104,6 +104,14 @@ class ServiceContainer
             }
             return new TaskDetailsRepository($db, $this->get('errors'));
         };
+
+        $this->factories['newTaskDetailsRepository'] = function() {
+            $db = $this->get('database');
+            if ($db === null) {
+                return null;
+            }
+            return new NewTaskDetailsRepository($db, $this->get('errors'));
+        };
         
         $this->factories['commentDetailsRepository'] = function() {
             $db = $this->get('database');
@@ -190,6 +198,16 @@ class ServiceContainer
                 $this->get('formatter'),
                 $taskDetailsRepo,
                 $activityFirstRepo
+            );
+        };
+        $this->factories['newTaskDetails'] = function() {
+            $repo = $this->has('newTaskDetailsRepository') ? $this->get('newTaskDetailsRepository') : null;
+            return new NewTaskDetailsService(
+                $this->get('filesystem'),
+                $this->get('request'),
+                $this->get('errors'),
+                $this->get('config'),
+                $repo
             );
         };
         $this->factories['taskFiles'] = fn() => new TaskFilesService($this->get('errors'));

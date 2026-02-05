@@ -105,4 +105,12 @@ if (!in_array('comment_text', $afmCols, true)) {
     echo "✓ Миграция 006: добавлена колонка comment_text.\n";
 }
 
+$stmt = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='new_task_details'");
+$newTaskDetailsExists = $stmt->fetchColumn() !== false;
+if (!$newTaskDetailsExists) {
+    $sql = file_get_contents($migrationsDir . '/007_add_new_task_details.sql');
+    $pdo->exec(trim($sql));
+    echo "✓ Миграция 007_add_new_task_details применена.\n";
+}
+
 echo "Готово.\n";

@@ -131,7 +131,8 @@ try {
     $taskHandler = new TaskEventHandler(
         $container->get('rest'),
         $container->get('taskDetails'),
-        $container->get('errors')
+        $container->get('errors'),
+        $container->has('newTaskDetails') ? $container->get('newTaskDetails') : null
     );
     $commentHandler = new CommentEventHandler(
         $container->get('commentDetails'),
