@@ -50,4 +50,197 @@ class NewTaskDetailsRepository
             return null;
         }
     }
+
+    /**
+     * Найти запись по request_id
+     *
+     * @param string $requestId ID запроса
+     * @return array|null Данные записи или null
+     */
+    public function findByRequestId(string $requestId): ?array
+    {
+        $sql = "SELECT * FROM new_task_details WHERE request_id = :request_id LIMIT 1";
+        $result = $this->database->queryOne($sql, [':request_id' => $requestId]);
+
+        if ($result === null) {
+            return null;
+        }
+
+        // Декодирование JSON полей
+        if (isset($result['raw_payload'])) {
+            $result['raw_payload_decoded'] = json_decode($result['raw_payload'], true) ?? [];
+        }
+        if (isset($result['extracted'])) {
+            $result['extracted_decoded'] = json_decode($result['extracted'], true) ?? [];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Найти записи по task_id
+     *
+     * @param string $taskId ID задачи
+     * @param int $limit Лимит записей
+     * @return array Массив записей
+     */
+    public function findByTaskId(string $taskId, int $limit = 100): array
+    {
+        $sql = "SELECT * FROM new_task_details 
+                WHERE task_id = :task_id 
+                ORDER BY created_at DESC 
+                LIMIT :limit";
+
+        $results = $this->database->queryAll($sql, [
+            ':task_id' => $taskId,
+            ':limit' => $limit,
+        ]);
+
+        // Декодирование JSON полей
+        foreach ($results as &$result) {
+            if (isset($result['raw_payload'])) {
+                $result['raw_payload_decoded'] = json_decode($result['raw_payload'], true) ?? [];
+            }
+            if (isset($result['extracted'])) {
+                $result['extracted_decoded'] = json_decode($result['extracted'], true) ?? [];
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Найти записи по типу события
+     *
+     * @param string $eventType Тип события (например, ONTASKADD)
+     * @param int $limit Лимит записей
+     * @return array Массив записей
+     */
+    public function findByEventType(string $eventType, int $limit = 100): array
+    {
+        $sql = "SELECT * FROM new_task_details 
+                WHERE event_type = :event_type 
+                ORDER BY created_at DESC 
+                LIMIT :limit";
+
+        $results = $this->database->queryAll($sql, [
+            ':event_type' => $eventType,
+            ':limit' => $limit,
+        ]);
+
+        // Декодирование JSON полей
+        foreach ($results as &$result) {
+            if (isset($result['raw_payload'])) {
+                $result['raw_payload_decoded'] = json_decode($result['raw_payload'], true) ?? [];
+            }
+            if (isset($result['extracted'])) {
+                $result['extracted_decoded'] = json_decode($result['extracted'], true) ?? [];
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Найти записи по условию в extracted JSON
+     * 
+     * Примеры использования:
+     * - findByExtractedField('responsibleId', '123') - найти задачи с ответственным ID = 123
+     * - findByExtractedField('title', '%важн%', 'LIKE') - найти задачи с заголовком содержащим "важн"
+     * - findByExtractedField('status', '5') - найти задачи со статусом 5
+     *
+     * @param string $field Поле в extracted JSON (например, 'title', 'responsibleId', 'status')
+     * @param mixed $value Значение для поиска
+     * @param string $operator Оператор сравнения (=, LIKE, !=, >, <, >=, <=)
+     * @param int $limit Лимит записей
+     * @return array Массив записей
+     */
+    public function findByExtractedField(string $field, $value, string $operator = '=', int $limit = 100): array
+    {
+        // SQLite JSON функции: json_extract для извлечения значения из JSON
+        // Путь к полю в extracted: $.field_name
+        $jsonPath = '$.' . $field;
+        
+        // Валидация оператора
+        $allowedOperators = ['=', '!=', '>', '<', '>=', '<=', 'LIKE'];
+        if (!in_array($operator, $allowedOperators, true)) {
+            $operator = '=';
+        }
+
+        $sql = "SELECT * FROM new_task_details 
+                WHERE json_extract(extracted, :json_path) {$operator} :value
+                ORDER BY created_at DESC 
+                LIMIT :limit";
+
+        $params = [
+            ':json_path' => $jsonPath,
+            ':value' => $value,
+            ':limit' => $limit,
+        ];
+
+        $results = $this->database->queryAll($sql, $params);
+
+        // Декодирование JSON полей
+        foreach ($results as &$result) {
+            if (isset($result['raw_payload'])) {
+                $result['raw_payload_decoded'] = json_decode($result['raw_payload'], true) ?? [];
+            }
+            if (isset($result['extracted'])) {
+                $result['extracted_decoded'] = json_decode($result['extracted'], true) ?? [];
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Получить значение поля из extracted по условию
+     * 
+     * Пример: получить title задачи с task_id = '123'
+     *
+     * @param string $taskId ID задачи
+     * @param string $field Поле в extracted JSON
+     * @return mixed Значение поля или null
+     */
+    public function getExtractedFieldValue(string $taskId, string $field)
+    {
+        $sql = "SELECT json_extract(extracted, :json_path) as field_value 
+                FROM new_task_details 
+                WHERE task_id = :task_id 
+                ORDER BY created_at DESC 
+                LIMIT 1";
+
+        $jsonPath = '$.' . $field;
+        $result = $this->database->queryOne($sql, [
+            ':json_path' => $jsonPath,
+            ':task_id' => $taskId,
+        ]);
+
+        return $result['field_value'] ?? null;
+    }
+
+    /**
+     * Получить значение поля из raw_payload по условию
+     * 
+     * Пример: получить значение из сырого ответа REST API
+     *
+     * @param string $taskId ID задачи
+     * @param string $jsonPath JSONPath путь к полю (например, '$.result.task.TITLE')
+     * @return mixed Значение поля или null
+     */
+    public function getRawPayloadFieldValue(string $taskId, string $jsonPath)
+    {
+        $sql = "SELECT json_extract(raw_payload, :json_path) as field_value 
+                FROM new_task_details 
+                WHERE task_id = :task_id 
+                ORDER BY created_at DESC 
+                LIMIT 1";
+
+        $result = $this->database->queryOne($sql, [
+            ':json_path' => $jsonPath,
+            ':task_id' => $taskId,
+        ]);
+
+        return $result['field_value'] ?? null;
+    }
 }
