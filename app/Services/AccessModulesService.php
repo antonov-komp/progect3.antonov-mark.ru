@@ -136,11 +136,41 @@ class AccessModulesService
 
         if ($modules === []) {
             $modules = $this->getDefaultModules();
+        } else {
+            $modules = $this->mergeWithDefaults($modules);
         }
 
         return [
             'modules' => $modules,
         ];
+    }
+
+    /**
+     * Добавляет в список модулей новые из getDefaultModules(), которых ещё нет в сохранённом конфиге.
+     *
+     * @param array<int, array<string, mixed>> $modules
+     * @return array<int, array<string, mixed>>
+     */
+    private function mergeWithDefaults(array $modules): array
+    {
+        $existingKeys = [];
+        foreach ($modules as $m) {
+            $key = $m['key'] ?? '';
+            if ($key !== '') {
+                $existingKeys[$key] = true;
+            }
+        }
+
+        $defaults = $this->getDefaultModules();
+        foreach ($defaults as $def) {
+            $key = $def['key'] ?? '';
+            if ($key !== '' && !isset($existingKeys[$key]) && count($modules) < self::MAX_MODULES) {
+                $modules[] = $def;
+                $existingKeys[$key] = true;
+            }
+        }
+
+        return $modules;
     }
 
     /**

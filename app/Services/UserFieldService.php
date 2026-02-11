@@ -83,21 +83,22 @@ class UserFieldService
             return [];
         }
 
-        $items = $response['result'] ?? [];
-        if (!is_array($items)) {
-            return [];
-        }
+        $resultData = $response['result'] ?? [];
+        $items = is_array($resultData) && isset($resultData['types']) && is_array($resultData['types'])
+            ? $resultData['types']
+            : (is_array($resultData) ? $resultData : []);
 
         $result = [];
         foreach ($items as $item) {
             if (!is_array($item)) {
                 continue;
             }
-            $entityTypeId = (string) ($item['entityTypeId'] ?? $item['id'] ?? '');
+            $typeId = (string) ($item['id'] ?? '');
+            $entityTypeId = (string) ($item['entityTypeId'] ?? $typeId);
             $title = (string) ($item['title'] ?? $item['titleRaw'] ?? 'Смарт-процесс ' . $entityTypeId);
-            if ($entityTypeId !== '') {
+            if ($entityTypeId !== '' || $typeId !== '') {
                 $result[] = [
-                    'id' => $entityTypeId,
+                    'id' => $typeId !== '' ? $typeId : $entityTypeId,
                     'entityTypeId' => $entityTypeId,
                     'title' => $title,
                 ];
@@ -108,40 +109,71 @@ class UserFieldService
     }
 
     /**
-     * Поля смарт-процесса по entityTypeId (crm.item.userfield.list).
+     * Поля смарт-процесса. entityId — id из crm.type.list для ENTITY_ID=CRM_{id}.
+     *
+     * 1. userfieldconfig.list (scope userfieldconfig) — рекомендованный метод
+     * 2. crm.userfield.list — запасной вариант
+     *
+     * @see https://apidocs.bitrix24.com/api-reference/crm/universal/userfieldconfig/userfieldconfig/userfieldconfig-list.html
+     * @see https://apidocs.bitrix24.com/api-reference/crm/universal/userfieldconfig/entity-id.html
      *
      * @return array<int, array<string, mixed>>
      */
-    public function getSmartProcessUserFields(string $entityTypeId): array
+    public function getSmartProcessUserFields(string $entityId): array
     {
-        $entityTypeId = trim($entityTypeId);
-        if ($entityTypeId === '') {
+        $entityId = trim($entityId);
+        if ($entityId === '') {
             return [];
         }
 
         $authContext = $this->accessContext->getAuthContext();
-        $response = $this->bitrixClient->call('crm.item.userfield.list', [
-            'entityTypeId' => $entityTypeId,
-        ], $authContext);
 
-        if ($response['error'] !== '') {
-            $this->logger->log('user-fields', [
-                'status' => 'error',
-                'message' => 'crm.item.userfield.list failed',
-                'entityTypeId' => $entityTypeId,
-                'error' => $response['error'],
-                'error_information' => $response['error_information'] ?? '',
-            ]);
+        $entityIds = [
+            'CRM_' . $entityId,
+            'DYNAMIC_' . $entityId,
+        ];
 
-            return [];
+        foreach ($entityIds as $listEntityId) {
+            $response = $this->bitrixClient->call('userfieldconfig.list', [
+                'moduleId' => 'crm',
+                'filter' => ['entityId' => $listEntityId],
+            ], $authContext);
+
+            if ($response['error'] !== '') {
+                continue;
+            }
+
+            $resultData = $response['result'] ?? [];
+            $items = $this->extractUserFieldItems($resultData);
+            if ($items !== []) {
+                return $this->normalizeFields($items, 'smart');
+            }
         }
 
-        $items = $response['result'] ?? [];
-        if (!is_array($items)) {
-            return [];
+        foreach ($entityIds as $listEntityId) {
+            $response = $this->bitrixClient->call('crm.userfield.list', [
+                'filter' => ['ENTITY_ID' => $listEntityId, 'LANG' => 'ru'],
+            ], $authContext);
+
+            if ($response['error'] !== '') {
+                continue;
+            }
+
+            $resultData = $response['result'] ?? [];
+            $items = $this->extractUserFieldItems($resultData);
+            if ($items !== []) {
+                return $this->normalizeFields($items, 'smart');
+            }
         }
 
-        return $this->normalizeFields($items, 'smart');
+        $this->logger->log('user-fields', [
+            'status' => 'warning',
+            'message' => 'No user fields found for smart process',
+            'entityId' => $entityId,
+            'triedEntityIds' => $entityIds,
+        ]);
+
+        return [];
     }
 
     /**
@@ -152,7 +184,9 @@ class UserFieldService
     private function fetchUserFields(string $method, string $entitySource): array
     {
         $authContext = $this->accessContext->getAuthContext();
-        $response = $this->bitrixClient->call($method, ['filter' => []], $authContext);
+        $response = $this->bitrixClient->call($method, [
+            'filter' => ['LANG' => 'ru'],
+        ], $authContext);
 
         if ($response['error'] !== '') {
             $this->logger->log('user-fields', [
@@ -195,28 +229,67 @@ class UserFieldService
     }
 
     /**
+     * Извлечение массива полей из ответа API (поддержка разных форматов).
+     * crm.userfield.list может вернуть ассоциативный массив [fieldName => config].
+     *
+     * @param mixed $resultData
+     * @return array<int, array<string, mixed>>
+     */
+    private function extractUserFieldItems($resultData): array
+    {
+        if (is_array($resultData) && isset($resultData['fields']) && is_array($resultData['fields'])) {
+            return $resultData['fields'];
+        }
+        if (is_array($resultData) && isset($resultData['userfields']) && is_array($resultData['userfields'])) {
+            return $resultData['userfields'];
+        }
+        if (is_array($resultData) && isset($resultData['items']) && is_array($resultData['items'])) {
+            return $resultData['items'];
+        }
+        if (is_array($resultData) && isset($resultData[0]) && !isset($resultData['types'])) {
+            return $resultData;
+        }
+        if (is_array($resultData) && $resultData !== []) {
+            $firstKey = array_key_first($resultData);
+            if (is_string($firstKey) && str_starts_with($firstKey, 'UF_')) {
+                return array_values($resultData);
+            }
+        }
+
+        return [];
+    }
+
+    /**
      * @param array<string, mixed> $field
      */
     private function extractTitle(array $field): string
     {
-        $editLabel = $field['EDIT_FORM_LABEL'] ?? null;
-        $listLabel = $field['LIST_COLUMN_LABEL'] ?? null;
-        $fieldName = $field['FIELD_NAME'] ?? '';
+        $editLabel = $field['EDIT_FORM_LABEL'] ?? $field['editFormLabel'] ?? null;
+        $listLabel = $field['LIST_COLUMN_LABEL'] ?? $field['listColumnLabel'] ?? null;
+        $fieldName = $field['FIELD_NAME'] ?? $field['fieldName'] ?? '';
 
         if (is_string($editLabel) && trim($editLabel) !== '') {
             return trim($editLabel);
         }
 
-        if (is_array($editLabel) && isset($editLabel['ru']) && trim((string) $editLabel['ru']) !== '') {
-            return trim((string) $editLabel['ru']);
+        if (is_array($editLabel)) {
+            foreach (['ru', 'en'] as $lang) {
+                if (isset($editLabel[$lang]) && is_string($editLabel[$lang]) && trim($editLabel[$lang]) !== '') {
+                    return trim($editLabel[$lang]);
+                }
+            }
         }
 
         if (is_string($listLabel) && trim($listLabel) !== '') {
             return trim($listLabel);
         }
 
-        if (is_array($listLabel) && isset($listLabel['ru']) && trim((string) $listLabel['ru']) !== '') {
-            return trim((string) $listLabel['ru']);
+        if (is_array($listLabel)) {
+            foreach (['ru', 'en'] as $lang) {
+                if (isset($listLabel[$lang]) && is_string($listLabel[$lang]) && trim($listLabel[$lang]) !== '') {
+                    return trim($listLabel[$lang]);
+                }
+            }
         }
 
         return is_string($fieldName) ? trim($fieldName) : '';

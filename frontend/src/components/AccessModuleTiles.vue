@@ -85,7 +85,7 @@ const hasModuleAccess = (moduleItem) => {
     : [];
 
   if (allowedUsers.length === 0 && allowedDepartments.length === 0) {
-    return false;
+    return true;
   }
 
   if (allowedUsers.includes(currentUserId.value)) {

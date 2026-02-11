@@ -23,11 +23,15 @@ export const useUserFieldsStore = defineStore('userFields', () => {
   const allSections = computed(() => {
     const items = [...sections.value];
     smartTypes.value.forEach((sp) => {
+      // id из crm.type.list — для ENTITY_ID в crm.userfield.list (CRM_{id})
+      const typeId = sp.id;
+      const entityTypeId = sp.entityTypeId || typeId;
       items.push({
         id: 'smart',
-        entityTypeId: sp.entityTypeId || sp.id,
-        title: sp.title || `Смарт-процесс ${sp.entityTypeId || sp.id}`,
-        entityId: sp.entityTypeId || sp.id,
+        entityTypeId,
+        typeId,
+        title: sp.title || `Смарт-процесс ${entityTypeId}`,
+        entityId: entityTypeId,
       });
     });
     return items;
@@ -51,7 +55,7 @@ export const useUserFieldsStore = defineStore('userFields', () => {
     }
   }
 
-  async function loadFields(section, entityTypeId, signal) {
+  async function loadFields(section, entityTypeId, typeId, signal) {
     loading.value = true;
     error.value = '';
     currentSection.value = section || '';
@@ -60,7 +64,7 @@ export const useUserFieldsStore = defineStore('userFields', () => {
     currentSectionTitle.value = '';
 
     try {
-      const data = await fetchFieldsBySection(section, entityTypeId, signal);
+      const data = await fetchFieldsBySection(section, entityTypeId, typeId, signal);
       fields.value = data.user_fields || [];
       currentSectionTitle.value = resolveSectionTitle(section, entityTypeId);
     } catch (err) {

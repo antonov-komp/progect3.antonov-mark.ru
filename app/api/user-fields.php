@@ -31,6 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 $section = isset($_GET['section']) ? trim((string) $_GET['section']) : '';
 $entityTypeId = isset($_GET['entityTypeId']) ? trim((string) $_GET['entityTypeId']) : '';
+$typeId = isset($_GET['typeId']) ? trim((string) $_GET['typeId']) : '';
 
 if ($section === '') {
     $responseService->send([
@@ -75,15 +76,20 @@ switch ($section) {
         $userFields = $userFieldService->getCompanyUserFields();
         break;
     case 'smart':
-        if ($entityTypeId === '') {
+        if ($entityTypeId === '' && $typeId === '') {
             $responseService->send([
                 'status' => 'error',
-                'error_message' => 'Для смарт-процессов обязателен параметр entityTypeId.',
+                'error_message' => 'Для смарт-процессов обязателен параметр entityTypeId или typeId.',
             ]);
             return;
         }
-        $userFields = $userFieldService->getSmartProcessUserFields($entityTypeId);
-        $entityTypeIdOut = $entityTypeId;
+        // ENTITY_ID для crm.userfield.list = CRM_{id}, где id — из crm.type.list (ordinal), не entityTypeId
+        $spaId = $typeId !== '' ? $typeId : $entityTypeId;
+        $userFields = $userFieldService->getSmartProcessUserFields($spaId);
+        if ($userFields === [] && $typeId !== '' && $entityTypeId !== '' && $typeId !== $entityTypeId) {
+            $userFields = $userFieldService->getSmartProcessUserFields($entityTypeId);
+        }
+        $entityTypeIdOut = $entityTypeId ?: $typeId;
         break;
     default:
         $responseService->send([

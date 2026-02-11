@@ -63,6 +63,10 @@ const routeEntityTypeId = computed(() =>
   route.name === 'user-fields-smart' ? route.params.entityTypeId || '' : '',
 );
 
+const routeTypeId = computed(() =>
+  route.name === 'user-fields-smart' ? (route.query.typeId || '') : '',
+);
+
 const showSections = computed(
   () =>
     route.name === 'user-fields' && !route.params.section && !route.params.entityTypeId,
@@ -82,6 +86,7 @@ async function loadSections() {
 async function loadFields() {
   const section = routeSection.value;
   const entityTypeId = routeEntityTypeId.value;
+  const typeId = routeTypeId.value;
   if (!section && !entityTypeId) {
     return;
   }
@@ -91,12 +96,22 @@ async function loadFields() {
     await store.loadSections(ctrl.signal);
   }
   const controller = new AbortController();
-  await store.loadFields(effectiveSection, entityTypeId || null, controller.signal);
+  await store.loadFields(effectiveSection, entityTypeId || null, typeId || null, controller.signal);
 }
 
 function goToSection(item) {
-  if (item.id === 'smart' && item.entityTypeId) {
-    router.push({ name: 'user-fields-smart', params: { entityTypeId: item.entityTypeId } });
+  if (item.id === 'smart' && (item.entityTypeId || item.typeId)) {
+    const query = {};
+    if (item.typeId != null && item.typeId !== '') {
+      query.typeId = item.typeId;
+    }
+    router.push({
+      name: 'user-fields-smart',
+      params: {
+        entityTypeId: item.entityTypeId || item.typeId,
+      },
+      query,
+    });
   } else {
     router.push({ name: 'user-fields-section', params: { section: item.id } });
   }
@@ -115,7 +130,7 @@ onMounted(() => {
 });
 
 watch(
-  () => [route.name, route.params],
+  () => [route.name, route.params, route.query],
   () => {
     if (showSections.value) {
       loadSections();

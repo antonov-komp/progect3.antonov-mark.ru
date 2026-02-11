@@ -57,14 +57,20 @@ export async function fetchSections(signal) {
  *
  * @param {string} section - deal|lead|contact|company|smart
  * @param {string|null} entityTypeId - для section=smart
+ * @param {string|null} typeId - id смарт-процесса из crm.type.list (если отличается от entityTypeId)
  * @returns {Promise<{user_fields: Array, total: number}>}
  */
-export async function fetchFieldsBySection(section, entityTypeId = null, signal) {
+export async function fetchFieldsBySection(section, entityTypeId = null, typeId = null, signal) {
   const url = new URL('/api/user-fields.php', window.location.origin);
   url.searchParams.set('section', section);
 
-  if (section === 'smart' && entityTypeId) {
-    url.searchParams.set('entityTypeId', entityTypeId);
+  if (section === 'smart' && (entityTypeId || typeId)) {
+    if (entityTypeId) {
+      url.searchParams.set('entityTypeId', entityTypeId);
+    }
+    if (typeId) {
+      url.searchParams.set('typeId', typeId);
+    }
   }
 
   const context = await getRequestContext();
