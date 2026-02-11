@@ -236,6 +236,16 @@ class AccessModulesService
                 'allowed_users' => [],
                 'allowed_departments' => [],
             ],
+            [
+                'key' => 'module_user_fields',
+                'title' => 'Пользовательские поля',
+                'subtitle' => 'Сделки, лиды, контакты, компании, смарт-процессы',
+                'icon' => 'field',
+                'route' => '/user-fields',
+                'enabled' => true,
+                'allowed_users' => [],
+                'allowed_departments' => [],
+            ],
         ];
     }
 

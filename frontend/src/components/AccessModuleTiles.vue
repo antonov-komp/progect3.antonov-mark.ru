@@ -111,6 +111,8 @@ const resolveIconLabel = (icon) => {
       return 'US';
     case 'settings':
       return 'SE';
+    case 'field':
+      return 'FD';
     default:
       return 'MD';
   }
