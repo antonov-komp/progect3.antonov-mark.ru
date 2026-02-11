@@ -20,6 +20,9 @@ class UserFieldService
     private AppLogger $logger;
     private AccessContextService $accessContext;
 
+    /** Последнее сообщение об ошибке Bitrix24 API для передачи в ответ. */
+    private string $lastErrorMessage = '';
+
     public function __construct(
         Bitrix24Client $bitrixClient,
         AppLogger $logger,
@@ -323,5 +326,301 @@ class UserFieldService
         }
 
         return is_string($fieldName) ? trim($fieldName) : '';
+    }
+
+    /**
+     * Создание пользовательского поля для сделок.
+     *
+     * @see https://apidocs.bitrix24.com/api-reference/crm/deals/user-defined-fields/crm-deal-userfield-add.html
+     *
+     * @param array<string, mixed> $fields Поля: USER_TYPE_ID, FIELD_NAME, LABEL/EDIT_FORM_LABEL и др.
+     * @return int|false ID созданного поля или false при ошибке
+     */
+    public function addDealUserField(array $fields): int|false
+    {
+        return $this->addUserField('crm.deal.userfield.add', $fields, 'deal');
+    }
+
+    /**
+     * Создание пользовательского поля для лидов.
+     *
+     * @see https://apidocs.bitrix24.ru/rest/crm/leads/userfield/crm_lead_userfield_add.html
+     *
+     * @param array<string, mixed> $fields
+     * @return int|false
+     */
+    public function addLeadUserField(array $fields): int|false
+    {
+        return $this->addUserField('crm.lead.userfield.add', $fields, 'lead');
+    }
+
+    /**
+     * Создание пользовательского поля для контактов.
+     *
+     * @see https://apidocs.bitrix24.ru/rest/crm/contacts/userfield/crm_contact_userfield_add.html
+     *
+     * @param array<string, mixed> $fields
+     * @return int|false
+     */
+    public function addContactUserField(array $fields): int|false
+    {
+        return $this->addUserField('crm.contact.userfield.add', $fields, 'contact');
+    }
+
+    /**
+     * Создание пользовательского поля для компаний.
+     *
+     * @see https://apidocs.bitrix24.ru/rest/crm/companies/userfield/crm_company_userfield_add.html
+     *
+     * @param array<string, mixed> $fields
+     * @return int|false
+     */
+    public function addCompanyUserField(array $fields): int|false
+    {
+        return $this->addUserField('crm.company.userfield.add', $fields, 'company');
+    }
+
+    /**
+     * Создание пользовательского поля для смарт-процесса.
+     *
+     * Используется userfieldconfig.add (рекомендуемый метод для SPA).
+     *
+     * @see https://raw.githubusercontent.com/bitrix24/b24restdocs/main/tutorials/crm/how-to-add-crm-objects/how-to-add-user-field-to-spa.md
+     *
+     * @param string $entityId ID типа из crm.type.list (ordinal, например 23)
+     * @param array<string, mixed> $fields
+     * @return int|false
+     */
+    public function addSmartProcessUserField(string $entityId, array $fields): int|false
+    {
+        $this->lastErrorMessage = '';
+        $entityId = trim($entityId);
+        if ($entityId === '') {
+            return false;
+        }
+
+        $authContext = $this->accessContext->getAuthContext();
+        $entityIds = ['CRM_' . $entityId, 'DYNAMIC_' . $entityId];
+
+        foreach ($entityIds as $listEntityId) {
+            $fieldConfig = $this->prepareUserfieldconfigForSmart($fields, $listEntityId);
+
+            $response = $this->bitrixClient->call('userfieldconfig.add', [
+                'moduleId' => 'crm',
+                'field' => $fieldConfig,
+            ], $authContext);
+
+            if ($response['error'] !== '') {
+                $this->lastErrorMessage = trim(
+                    (string) ($response['error_information'] ?? $response['error'] ?? ''),
+                );
+                if ($this->lastErrorMessage === '') {
+                    $this->lastErrorMessage = (string) $response['error'];
+                }
+                $this->logger->log('user-fields', [
+                    'status' => 'error',
+                    'action' => 'add_smart_userfield',
+                    'entity_id' => $listEntityId,
+                    'error' => $response['error'],
+                    'error_information' => $response['error_information'] ?? '',
+                ]);
+                continue;
+            }
+
+            $resultData = $response['result'] ?? [];
+            $fieldId = null;
+            if (is_array($resultData) && isset($resultData['field']['id'])) {
+                $fieldId = (int) $resultData['field']['id'];
+            } elseif (is_numeric($resultData)) {
+                $fieldId = (int) $resultData;
+            }
+
+            if ($fieldId !== null && $fieldId > 0) {
+                $this->logger->log('user-fields', [
+                    'status' => 'ok',
+                    'action' => 'add_smart_userfield',
+                    'entity_id' => $listEntityId,
+                    'field_id' => $fieldId,
+                ]);
+
+                return $fieldId;
+            }
+        }
+
+        if ($this->lastErrorMessage === '') {
+            $this->lastErrorMessage = 'Не удалось создать поле. Убедитесь, что у приложения есть scope userfieldconfig.';
+        }
+
+        return false;
+    }
+
+    /**
+     * Формирование конфигурации поля для userfieldconfig.add.
+     *
+     * @param array<string, mixed> $fields
+     * @param string $entityId CRM_23 или DYNAMIC_23
+     * @return array<string, mixed>
+     */
+    private function prepareUserfieldconfigForSmart(array $fields, string $entityId): array
+    {
+        $label = trim((string) ($fields['EDIT_FORM_LABEL'] ?? $fields['LABEL'] ?? ''));
+        $fieldName = trim((string) ($fields['FIELD_NAME'] ?? ''));
+
+        $entityNum = preg_replace('/^CRM_|^DYNAMIC_/', '', $entityId);
+        if ($fieldName === '') {
+            $fieldName = 'UF_CRM_' . $entityNum . '_' . strtoupper(substr(uniqid(), -8));
+        } else {
+            $fieldName = preg_replace('/^UF_CRM_[A-Z0-9_]*/i', '', $fieldName);
+            $fieldName = 'UF_CRM_' . $entityNum . '_' . (strlen($fieldName) > 0 ? strtoupper($fieldName) : strtoupper(substr(uniqid(), -8)));
+        }
+        $fieldName = substr($fieldName, 0, 50);
+
+        $config = [
+            'entityId' => $entityId,
+            'fieldName' => $fieldName,
+            'userTypeId' => (string) ($fields['USER_TYPE_ID'] ?? 'string'),
+            'editFormLabel' => $label !== '' ? ['ru' => $label] : ['ru' => $fieldName],
+            'multiple' => ($fields['MULTIPLE'] ?? 'N') === 'Y' ? 'Y' : 'N',
+            'mandatory' => ($fields['MANDATORY'] ?? 'N') === 'Y' ? 'Y' : 'N',
+            'sort' => (string) max(1, (int) ($fields['SORT'] ?? 100)),
+            'showInList' => ($fields['SHOW_IN_LIST'] ?? 'N') === 'Y' ? 'Y' : 'N',
+            'showFilter' => ($fields['SHOW_FILTER'] ?? 'N') === 'Y' ? 'Y' : 'N',
+            'editInList' => ($fields['EDIT_IN_LIST'] ?? 'Y') === 'Y' ? 'Y' : 'N',
+            'isSearchable' => ($fields['IS_SEARCHABLE'] ?? 'N') === 'Y' ? 'Y' : 'N',
+        ];
+
+        return $config;
+    }
+
+    /**
+     * Возвращает последнее сообщение об ошибке Bitrix24 API.
+     */
+    public function getLastError(): string
+    {
+        return $this->lastErrorMessage;
+    }
+
+    /**
+     * Общий метод добавления пользовательского поля через entity-specific API.
+     *
+     * @param string $method crm.deal.userfield.add, crm.lead.userfield.add и т.д.
+     * @param array<string, mixed> $fields
+     * @param string $entitySource deal|lead|contact|company
+     * @return int|false
+     */
+    private function addUserField(string $method, array $fields, string $entitySource): int|false
+    {
+        $this->lastErrorMessage = '';
+        $authContext = $this->accessContext->getAuthContext();
+        $prepared = $this->prepareFieldsForAdd($fields, $entitySource);
+
+        $response = $this->bitrixClient->call($method, [
+            'fields' => $prepared,
+        ], $authContext);
+
+        if ($response['error'] !== '') {
+            $this->lastErrorMessage = trim(
+                (string) ($response['error_information'] ?? $response['error'] ?? ''),
+            );
+            if ($this->lastErrorMessage === '') {
+                $this->lastErrorMessage = (string) $response['error'];
+            }
+            $this->logger->log('user-fields', [
+                'status' => 'error',
+                'action' => 'add_userfield',
+                'method' => $method,
+                'entity_source' => $entitySource,
+                'error' => $response['error'],
+                'error_information' => $response['error_information'] ?? '',
+            ]);
+
+            return false;
+        }
+
+        $result = $response['result'];
+        if (!is_numeric($result)) {
+            return false;
+        }
+
+        $fieldId = (int) $result;
+        $this->logger->log('user-fields', [
+            'status' => 'ok',
+            'action' => 'add_userfield',
+            'method' => $method,
+            'entity_source' => $entitySource,
+            'field_id' => $fieldId,
+        ]);
+
+        return $fieldId;
+    }
+
+    /**
+     * Подготовка полей для отправки в API.
+     * Нормализация FIELD_NAME (префикс UF_CRM_*), LABEL/EDIT_FORM_LABEL, значений по умолчанию.
+     *
+     * @param array<string, mixed> $fields
+     * @param string $entitySource deal|lead|contact|company|smart
+     * @return array<string, mixed>
+     */
+    private function prepareFieldsForAdd(array $fields, string $entitySource): array
+    {
+        $result = $fields;
+
+        // LABEL или EDIT_FORM_LABEL — одно из них обязательно для label
+        $label = trim((string) ($fields['EDIT_FORM_LABEL'] ?? $fields['LABEL'] ?? ''));
+        if ($label !== '') {
+            $result['LABEL'] = $label;
+            if (!isset($result['EDIT_FORM_LABEL'])) {
+                $result['EDIT_FORM_LABEL'] = $label;
+            }
+        }
+
+        // FIELD_NAME — без префикса UF_CRM_, Bitrix добавляет автоматически; макс. 20 символов без префикса
+        $fieldName = trim((string) ($fields['FIELD_NAME'] ?? ''));
+        if ($fieldName === '') {
+            $prefix = match ($entitySource) {
+                'deal' => 'UF_CRM_DEAL_',
+                'lead' => 'UF_CRM_LEAD_',
+                'contact' => 'UF_CRM_CONTACT_',
+                'company' => 'UF_CRM_COMPANY_',
+                default => 'UF_CRM_',
+            };
+            // Ограничение: 20 символов всего, UF_CRM_* занимает ~13 — суффикс до 7 символов
+            $result['FIELD_NAME'] = substr((string) time(), -7);
+        } else {
+            // Убрать префикс UF_CRM_ если передан — API примет без него
+            $cleaned = preg_replace('/^UF_CRM_[A-Z_]*/i', '', $fieldName);
+            if ($cleaned !== '') {
+                $result['FIELD_NAME'] = $cleaned;
+            }
+        }
+
+        // Значения по умолчанию для опциональных параметров
+        $defaults = [
+            'MANDATORY' => 'N',
+            'MULTIPLE' => 'N',
+            'SHOW_IN_LIST' => 'N',
+            'SHOW_FILTER' => 'N',
+            'SORT' => 100,
+        ];
+        foreach ($defaults as $key => $def) {
+            if (!isset($result[$key]) || $result[$key] === '') {
+                $result[$key] = $def;
+            }
+        }
+
+        // Преобразование boolean-подобных значений
+        foreach (['MANDATORY', 'MULTIPLE', 'SHOW_IN_LIST', 'SHOW_FILTER', 'EDIT_IN_LIST', 'IS_SEARCHABLE'] as $key) {
+            if (isset($result[$key])) {
+                $v = $result[$key];
+                $result[$key] = ($v === true || $v === 'Y' || $v === '1' || $v === 1) ? 'Y' : 'N';
+            }
+        }
+
+        if (isset($result['SORT'])) {
+            $result['SORT'] = max(1, (int) $result['SORT']);
+        }
+
+        return $result;
     }
 }

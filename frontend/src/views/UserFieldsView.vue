@@ -17,10 +17,14 @@
     </div>
     <div v-else-if="showList" class="user-fields-view__list">
       <UserFieldsTable
+        :section="effectiveSection"
+        :entity-type-id="routeEntityTypeId || null"
+        :type-id="routeTypeId || null"
         :fields="fields"
         :loading="loading"
         :error="error"
         @back="goBack"
+        @created="handleFieldCreated"
       />
     </div>
   </div>
@@ -31,6 +35,7 @@ import { computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useUserFieldsStore } from '@/stores/userFieldsStore';
+import { notifySuccess } from '@/services/notifications';
 import UserFieldsBreadcrumb from '@/components/user-fields/UserFieldsBreadcrumb.vue';
 import UserFieldsSectionTiles from '@/components/user-fields/UserFieldsSectionTiles.vue';
 import UserFieldsTable from '@/components/user-fields/UserFieldsTable.vue';
@@ -76,7 +81,17 @@ const showList = computed(
   () => routeSection.value !== '' || routeEntityTypeId.value !== '',
 );
 
+const effectiveSection = computed(
+  () => (routeSection.value || (routeEntityTypeId.value ? 'smart' : '')) || '',
+);
+
 const sectionTitle = computed(() => currentSectionTitle.value);
+
+async function handleFieldCreated() {
+  notifySuccess('Поле создано');
+  const controller = new AbortController();
+  await loadFields();
+}
 
 async function loadSections() {
   const controller = new AbortController();

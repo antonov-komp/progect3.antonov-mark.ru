@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { fetchSections, fetchFieldsBySection } from '@/services/userFieldsService';
+import {
+  fetchSections,
+  fetchFieldsBySection,
+  createUserField as createUserFieldApi,
+} from '@/services/userFieldsService';
 
 const FIXED_SECTIONS = [
   { id: 'deal', title: 'Сделки', entityId: 'CRM_DEAL' },
@@ -90,6 +94,19 @@ export const useUserFieldsStore = defineStore('userFields', () => {
     error.value = '';
   }
 
+  async function createField(section, fields, entityTypeId = null, typeId = null, signal) {
+    const result = await createUserFieldApi(
+      section,
+      fields,
+      entityTypeId,
+      typeId,
+      signal,
+    );
+    const controller = new AbortController();
+    await loadFields(section, entityTypeId, typeId, controller.signal);
+    return result;
+  }
+
   return {
     sections,
     smartTypes,
@@ -103,6 +120,7 @@ export const useUserFieldsStore = defineStore('userFields', () => {
     error,
     loadSections,
     loadFields,
+    createField,
     resolveSectionTitle,
     clearError,
   };

@@ -88,3 +88,55 @@ export async function fetchFieldsBySection(section, entityTypeId = null, typeId 
 
   return parseJsonResponse(response);
 }
+
+/**
+ * Создание пользовательского поля.
+ *
+ * @param {string} section - deal|lead|contact|company|smart
+ * @param {object} fields - поля (USER_TYPE_ID, FIELD_NAME, EDIT_FORM_LABEL и др.)
+ * @param {string|null} entityTypeId - для section=smart
+ * @param {string|null} typeId - для section=smart
+ * @param {AbortSignal} signal - опционально
+ * @returns {Promise<{field_id: number}>}
+ */
+export async function createUserField(
+  section,
+  fields,
+  entityTypeId = null,
+  typeId = null,
+  signal,
+) {
+  const url = new URL('/api/user-fields.php', window.location.origin);
+
+  const context = await getRequestContext();
+  appendQueryParams(url, context);
+
+  const body = {
+    section,
+    fields,
+  };
+  if (section === 'smart' && (entityTypeId || typeId)) {
+    if (entityTypeId) body.entityTypeId = entityTypeId;
+    if (typeId) body.typeId = typeId;
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      ...DEFAULT_HEADERS,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  const data = await parseJsonResponse(response);
+
+  if (data.status === 'error') {
+    const err = new Error(data.error_message || 'Ошибка создания поля');
+    err.response = data;
+    throw err;
+  }
+
+  return { field_id: data.field_id };
+}

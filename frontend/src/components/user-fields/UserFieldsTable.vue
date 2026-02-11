@@ -2,10 +2,28 @@
   <section class="user-fields-table-section">
     <div class="user-fields-table-section__header">
       <h2 class="user-fields-table-section__title">Пользовательские поля</h2>
-      <button type="button" class="user-fields-table-section__back" @click="$emit('back')">
-        Назад к разделам
-      </button>
+      <div class="user-fields-table-section__header-actions">
+        <button
+          type="button"
+          class="user-fields-table-section__create"
+          @click="showCreateModal = true"
+        >
+          Создать поле
+        </button>
+        <button type="button" class="user-fields-table-section__back" @click="$emit('back')">
+          Назад к разделам
+        </button>
+      </div>
     </div>
+
+    <UserFieldsCreateFieldModal
+      :visible="showCreateModal"
+      :section="section"
+      :entity-type-id="entityTypeId"
+      :type-id="typeId"
+      @created="handleFieldCreated"
+      @cancel="showCreateModal = false"
+    />
 
     <LoadingState v-if="loading" />
 
@@ -53,10 +71,24 @@
 </template>
 
 <script setup>
+import { ref } from 'vue';
 import ErrorState from '@/components/ErrorState.vue';
 import LoadingState from '@/components/LoadingState.vue';
+import UserFieldsCreateFieldModal from '@/components/user-fields/UserFieldsCreateFieldModal.vue';
 
 defineProps({
+  section: {
+    type: String,
+    default: '',
+  },
+  entityTypeId: {
+    type: String,
+    default: null,
+  },
+  typeId: {
+    type: String,
+    default: null,
+  },
   fields: {
     type: Array,
     default: () => [],
@@ -71,7 +103,13 @@ defineProps({
   },
 });
 
-defineEmits(['back']);
+const emit = defineEmits(['back', 'created']);
+const showCreateModal = ref(false);
+
+function handleFieldCreated() {
+  showCreateModal.value = false;
+  emit('created');
+}
 </script>
 
 <style scoped>
@@ -92,6 +130,28 @@ defineEmits(['back']);
   font-size: 18px;
   font-weight: 600;
   margin: 0;
+}
+
+.user-fields-table-section__header-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.user-fields-table-section__create {
+  border: 1px solid var(--b24-primary);
+  background: var(--b24-primary);
+  color: white;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.user-fields-table-section__create:hover {
+  opacity: 0.9;
 }
 
 .user-fields-table-section__back {
