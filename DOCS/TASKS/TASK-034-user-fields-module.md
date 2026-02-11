@@ -1,7 +1,7 @@
 # TASK-034: Модуль «Пользовательские поля»
 
 **Дата создания:** 2026-02-11 (UTC+3, Брест)  
-**Статус:** В работе  
+**Статус:** Завершена  
 **Приоритет:** Средний  
 **Исполнитель:** Bitrix24 Программист (Vue.js)
 
@@ -141,13 +141,13 @@
   - `getContactUserFields()` — поля контактов
   - `getCompanyUserFields()` — поля компаний
   - `getSmartProcessTypes()` — список типов смарт-процессов (`crm.type.list`)
-  - `getSmartProcessUserFields(string $entityTypeId)` — поля смарт-процесса (`crm.item.userfield.list`)
+  - `getSmartProcessUserFields(string $entityId)` — поля смарт-процесса (`userfieldconfig.list` + запасной `crm.userfield.list`)
   - Нормализация: добавление `entity_source` (deal|lead|contact|company|smart), извлечение `TITLE` из меток
 
 - `app/api/user-fields.php` — JSON-эндпоинт
   - **Секции (разделы):** `GET ?section=sections` — возвращает список разделов + смарт-процессы (результат `crm.type.list`)
   - **Поля раздела:** `GET ?section=deal` | `?section=lead` | `?section=contact` | `?section=company`
-  - **Поля смарт-процесса:** `GET ?section=smart&entityTypeId=134`
+  - **Поля смарт-процесса:** `GET ?section=smart&entityTypeId=134&typeId=7` (typeId — id из crm.type.list, приоритетен для ENTITY_ID)
 
 - `public/api/user-fields.php` — прокси
 
@@ -189,7 +189,7 @@
 - Bitrix24 REST API (CRest / Bitrix24Client)
 - Система контроля доступа (AccessControlService)
 - Роутер и плитки модулей (AccessModuleTiles, uiStateStore DEFAULT_MODULES)
-- Методы Bitrix24: `crm.deal.userfield.list`, `crm.lead.userfield.list`, `crm.contact.userfield.list`, `crm.company.userfield.list`, `crm.type.list`, `crm.item.userfield.list`
+- Методы Bitrix24: `crm.deal.userfield.list`, `crm.lead.userfield.list`, `crm.contact.userfield.list`, `crm.company.userfield.list`, `crm.type.list`, `userfieldconfig.list` (смарт-процессы), `crm.userfield.list` (запасной)
 
 ---
 
@@ -200,13 +200,13 @@
 1. **UserFieldService**
    - Методы: `getDealUserFields()`, `getLeadUserFields()`, `getContactUserFields()`, `getCompanyUserFields()`
    - Метод `getSmartProcessTypes()` — вызов `crm.type.list`
-   - Метод `getSmartProcessUserFields(string $entityTypeId)` — вызов `crm.item.userfield.list`
+   - Метод `getSmartProcessUserFields(string $entityId)` — вызов `userfieldconfig.list` (осн.) и `crm.userfield.list` (запас.)
    - Нормализация: `entity_source`, извлечение `TITLE` из `EDIT_FORM_LABEL` / `LIST_COLUMN_LABEL` / `FIELD_NAME`
    - Обработка ошибок, логирование через AppLogger
 
 2. **API user-fields.php**
    - Параметр `section`: `sections` | `deal` | `lead` | `contact` | `company` | `smart`
-   - Параметр `entityTypeId` (обязателен при `section=smart`)
+   - Параметры `entityTypeId` и `typeId` (обязателен хотя бы один при `section=smart`); `typeId` приоритетен для ENTITY_ID
    - При `section=sections`: вызвать `getSmartProcessTypes()`, вернуть `{ sections: [...], smart_types: [...] }`
    - При остальных section: вызвать соответствующий метод, вернуть `{ user_fields: [...] }`
    - Прокси `public/api/user-fields.php`
@@ -255,12 +255,78 @@
 | `crm.contact.userfield.list` | Контакты | https://apidocs.bitrix24.ru/api-reference/crm/contacts/userfield/crm-contact-userfield-list.html |
 | `crm.company.userfield.list` | Компании | https://apidocs.bitrix24.ru/api-reference/crm/companies/userfield/crm-company-userfield-list.html |
 | `crm.type.list` | Типы смарт-процессов | https://apidocs.bitrix24.ru/api-reference/crm/universal/user-defined-object-types/index |
-| `crm.item.userfield.list` | Поля смарт-процесса | https://apidocs.bitrix24.ru/api-reference/crm/universal/user-defined-fields/ |
+| `userfieldconfig.list` | Поля смарт-процесса | https://apidocs.bitrix24.com/api-reference/crm/universal/userfieldconfig/userfieldconfig/userfieldconfig-list.html |
+| `crm.userfield.list` | Запасной для полей смарт-процесса | — |
 
-**Параметры `crm.item.userfield.list`:**
+**Важно:** метод `crm.item.userfield.list` отсутствует в Bitrix24 REST API (ERROR_METHOD_NOT_FOUND).
+
+---
+
+## Решение для полей смарт-процессов (итоги реализации)
+
+Изначально задача предполагала использование `crm.item.userfield.list`, однако этот метод **отсутствует в Bitrix24 REST API** (возвращает `ERROR_METHOD_NOT_FOUND`). Ниже — решение, позволившее успешно загружать пользовательские поля смарт-процессов (в т.ч. «Дизайн»).
+
+### 1. Использование `userfieldconfig.list`
+
+Основной способ — метод `userfieldconfig.list` (модуль `userfieldconfig`):
+
 ```php
-['entityTypeId' => '134']  // ID типа из crm.type.list
+$response = $this->bitrixClient->call('userfieldconfig.list', [
+    'moduleId' => 'crm',
+    'filter' => ['entityId' => 'CRM_7'],
+], $authContext);
 ```
+
+- **`moduleId`:** `'crm'` для CRM-сущностей  
+- **`filter.entityId`:** идентификатор сущности в формате `CRM_{id}` или `DYNAMIC_{id}`  
+- **Результат:** массив полей в `result.fields`
+
+### 2. Правильный ENTITY_ID: `id`, а не `entityTypeId`
+
+В `crm.type.list` возвращаются:
+- `id` — порядковый номер типа в Bitrix24 (для ENTITY_ID)
+- `entityTypeId` — внутренний идентификатор типа
+
+Согласно документации Bitrix24 (tutorial «How to Create a Custom Field in a SPA»), `entityId` для пользовательских полей должен быть **`CRM_{id}`**, где `id` берётся из `crm.type.list`, а не `entityTypeId`.
+
+**Пример:** `id: 7`, `entityTypeId: 177` → для полей используется `CRM_7`.
+
+### 3. Изменения в API
+
+- Для смарт-процессов в запрос добавляется параметр **`typeId`** (равный `id` из `crm.type.list`).
+- Backend отдаёт приоритет **`typeId`** при выборе ENTITY_ID: сначала пробует `typeId`, при неудаче — `entityTypeId`.
+
+### 4. Резервный метод
+
+Если `userfieldconfig.list` недоступен (например, scope), используется `crm.userfield.list`:
+
+```php
+$response = $this->bitrixClient->call('crm.userfield.list', [
+    'filter' => ['ENTITY_ID' => 'CRM_7', 'LANG' => 'ru'],
+], $authContext);
+```
+
+### 5. Формат ENTITY_ID для смарт-процессов
+
+Пробуются следующие значения:
+- `CRM_{id}` — основной формат (по документации)
+- `DYNAMIC_{id}` — запасной вариант
+
+### 6. Разные форматы ответа API
+
+`extractUserFieldItems()` поддерживает:
+- `result.fields` — структура `userfieldconfig.list`
+- `result` — массив/ассоциативный массив
+- UPPERCASE (`EDIT_FORM_LABEL`, `FIELD_NAME`) и camelCase (`editFormLabel`, `fieldName`)
+- Метки на разных языках (`ru`, `en` и др.)
+
+### 7. Frontend: передача typeId
+
+При переходе к разделу смарт-процесса:
+- `entityTypeId` передаётся в `params` (для заголовка, breadcrumb)
+- `typeId` передаётся в `query` и приоритетно используется для запроса полей
+
+---
 
 **Параметр `filter.LANG`** (опционально): при передаче `ru` или `en` в ответе возвращаются локализованные метки (EDIT_FORM_LABEL, LIST_COLUMN_LABEL и т.д.) для выбранного языка.
 
@@ -355,3 +421,4 @@
 
 - 2026-02-11 (UTC+3, Брест): Черновик задачи создан.
 - 2026-02-11 (UTC+3, Брест): Детализация: сценарий входа, страница навигации разделов, подгрузка смарт-процессов при открытии, структура поля (название, тип, ID технический и др.), ступенчатые подзадачи, структура API-ответов.
+- 2026-02-11 (UTC+3, Брест): Реализована загрузка полей смарт-процессов: метод `crm.item.userfield.list` отсутствует в API; использование `userfieldconfig.list` с `filter.entityId = CRM_{id}`; приоритет `typeId` (id из crm.type.list) над `entityTypeId`; резервный вариант `crm.userfield.list`; документирован раздел «Решение для полей смарт-процессов».

@@ -34,10 +34,10 @@
         </thead>
         <tbody>
           <tr v-for="field in fields" :key="field.ID || field.FIELD_NAME">
-            <td>{{ field.TITLE || field.FIELD_NAME }}</td>
-            <td><code>{{ field.FIELD_NAME }}</code></td>
-            <td>{{ field.USER_TYPE_ID }}</td>
-            <td>{{ field.ID }}</td>
+            <td>{{ field.TITLE || field.FIELD_NAME || field.fieldName }}</td>
+            <td><code>{{ field.FIELD_NAME || field.fieldName }}</code></td>
+            <td>{{ field.USER_TYPE_ID || field.userTypeId }}</td>
+            <td>{{ field.ID || field.id }}</td>
             <td>{{ field.MANDATORY === 'Y' ? 'Да' : 'Нет' }}</td>
             <td>{{ field.MULTIPLE === 'Y' ? 'Да' : 'Нет' }}</td>
             <td>{{ field.SORT }}</td>

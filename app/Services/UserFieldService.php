@@ -137,6 +137,7 @@ class UserFieldService
             $response = $this->bitrixClient->call('userfieldconfig.list', [
                 'moduleId' => 'crm',
                 'filter' => ['entityId' => $listEntityId],
+                'select' => ['0' => '*', 'language' => 'ru'],
             ], $authContext);
 
             if ($response['error'] !== '') {
@@ -216,9 +217,28 @@ class UserFieldService
     private function normalizeFields(array $items, string $entitySource): array
     {
         $result = [];
+        $aliasMap = [
+            'id' => 'ID',
+            'fieldName' => 'FIELD_NAME',
+            'userTypeId' => 'USER_TYPE_ID',
+            'mandatory' => 'MANDATORY',
+            'multiple' => 'MULTIPLE',
+            'sort' => 'SORT',
+            'showInList' => 'SHOW_IN_LIST',
+            'editInList' => 'EDIT_IN_LIST',
+            'showFilter' => 'SHOW_FILTER',
+            'isSearchable' => 'IS_SEARCHABLE',
+            'editFormLabel' => 'EDIT_FORM_LABEL',
+            'listColumnLabel' => 'LIST_COLUMN_LABEL',
+        ];
         foreach ($items as $item) {
             if (!is_array($item)) {
                 continue;
+            }
+            foreach ($aliasMap as $from => $to) {
+                if (array_key_exists($from, $item) && !array_key_exists($to, $item)) {
+                    $item[$to] = $item[$from];
+                }
             }
             $item['entity_source'] = $entitySource;
             $item['TITLE'] = $this->extractTitle($item);
@@ -278,6 +298,11 @@ class UserFieldService
                     return trim($editLabel[$lang]);
                 }
             }
+            foreach ($editLabel as $v) {
+                if (is_string($v) && trim($v) !== '') {
+                    return trim($v);
+                }
+            }
         }
 
         if (is_string($listLabel) && trim($listLabel) !== '') {
@@ -288,6 +313,11 @@ class UserFieldService
             foreach (['ru', 'en'] as $lang) {
                 if (isset($listLabel[$lang]) && is_string($listLabel[$lang]) && trim($listLabel[$lang]) !== '') {
                     return trim($listLabel[$lang]);
+                }
+            }
+            foreach ($listLabel as $v) {
+                if (is_string($v) && trim($v) !== '') {
+                    return trim($v);
                 }
             }
         }
