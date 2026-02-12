@@ -1,0 +1,33 @@
+{
+    "buttons": [
+        {
+            "text": "131313",
+            "action": "open_url",
+            "url": ""
+        },
+        {
+            "text": "14124",
+            "action": "open_phone",
+            "url": "",
+            "phone": "214"
+        },
+        {
+            "text": "124124",
+            "action": "open_phone",
+            "url": "",
+            "phone": "124124"
+        },
+        {
+            "text": "124124",
+            "action": "open_email",
+            "url": "",
+            "email": "124124"
+        },
+        {
+            "text": "124124",
+            "action": "open_email",
+            "url": "",
+            "email": "214214"
+        }
+    ]
+}

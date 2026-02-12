@@ -4,6 +4,9 @@
 /app/logs/
 /app/config/
 
+# Embed field settings (runtime data)
+/data/embed-settings/*.json
+
 # Sensitive app settings
 /app/settings.php
 /app/settings.json

@@ -16,6 +16,7 @@ const FIXED_SECTIONS = [
 export const useUserFieldsStore = defineStore('userFields', () => {
   const sections = ref(FIXED_SECTIONS);
   const smartTypes = ref([]);
+  const embedTypes = ref([]);
   const fields = ref([]);
   const currentSection = ref('');
   const currentEntityTypeId = ref(null);
@@ -48,6 +49,7 @@ export const useUserFieldsStore = defineStore('userFields', () => {
     try {
       const data = await fetchSections(signal);
       smartTypes.value = data.smart_types || [];
+      embedTypes.value = data.embed_types || [];
       if (Array.isArray(data.sections) && data.sections.length > 0) {
         sections.value = data.sections;
       }
@@ -110,6 +112,7 @@ export const useUserFieldsStore = defineStore('userFields', () => {
   return {
     sections,
     smartTypes,
+    embedTypes,
     allSections,
     fields,
     currentSection,

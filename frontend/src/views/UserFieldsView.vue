@@ -20,6 +20,7 @@
         :section="effectiveSection"
         :entity-type-id="routeEntityTypeId || null"
         :type-id="routeTypeId || null"
+        :embed-types="embedTypes"
         :fields="fields"
         :loading="loading"
         :error="error"
@@ -47,6 +48,7 @@ const store = useUserFieldsStore();
 const {
   allSections,
   fields,
+  embedTypes,
   currentSection,
   currentEntityTypeId,
   currentSectionTitle,
@@ -106,7 +108,7 @@ async function loadFields() {
     return;
   }
   const effectiveSection = section || 'smart';
-  if (effectiveSection === 'smart' && store.smartTypes.length === 0) {
+  if (store.embedTypes.length === 0 || (effectiveSection === 'smart' && store.smartTypes.length === 0)) {
     const ctrl = new AbortController();
     await store.loadSections(ctrl.signal);
   }

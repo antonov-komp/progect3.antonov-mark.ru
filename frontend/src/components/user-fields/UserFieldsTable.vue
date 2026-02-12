@@ -21,8 +21,19 @@
       :section="section"
       :entity-type-id="entityTypeId"
       :type-id="typeId"
+      :embed-types="embedTypes"
       @created="handleFieldCreated"
       @cancel="showCreateModal = false"
+    />
+
+    <UserFieldsConfigureFieldModal
+      :visible="showConfigureModal"
+      :section="section"
+      :entity-type-id="entityTypeId"
+      :type-id="typeId"
+      :field="configureField"
+      @saved="handleConfigureSaved"
+      @cancel="showConfigureModal = false"
     />
 
     <LoadingState v-if="loading" />
@@ -48,6 +59,7 @@
             <th>Ред. в списке</th>
             <th>В фильтре</th>
             <th>Поиск</th>
+            <th>Действия</th>
           </tr>
         </thead>
         <tbody>
@@ -63,6 +75,17 @@
             <td>{{ field.EDIT_IN_LIST === 'Y' ? 'Да' : 'Нет' }}</td>
             <td>{{ field.SHOW_FILTER || '—' }}</td>
             <td>{{ field.IS_SEARCHABLE === 'Y' ? 'Да' : 'Нет' }}</td>
+            <td>
+              <button
+                v-if="isEmbedField(field)"
+                type="button"
+                class="user-fields-table__configure"
+                @click="openConfigure(field)"
+              >
+                Настроить
+              </button>
+              <span v-else>—</span>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -75,8 +98,11 @@ import { ref } from 'vue';
 import ErrorState from '@/components/ErrorState.vue';
 import LoadingState from '@/components/LoadingState.vue';
 import UserFieldsCreateFieldModal from '@/components/user-fields/UserFieldsCreateFieldModal.vue';
+import UserFieldsConfigureFieldModal from '@/components/user-fields/UserFieldsConfigureFieldModal.vue';
 
-defineProps({
+const EMBED_TYPES = ['buttons_view', 'dependent_fields_view'];
+
+const props = defineProps({
   section: {
     type: String,
     default: '',
@@ -88,6 +114,10 @@ defineProps({
   typeId: {
     type: String,
     default: null,
+  },
+  embedTypes: {
+    type: Array,
+    default: () => [],
   },
   fields: {
     type: Array,
@@ -105,9 +135,28 @@ defineProps({
 
 const emit = defineEmits(['back', 'created']);
 const showCreateModal = ref(false);
+const showConfigureModal = ref(false);
+const configureField = ref(null);
+
+function isEmbedField(field) {
+  if (!['deal', 'lead', 'contact', 'company'].includes(props.section)) return false;
+  const typeId = field?.USER_TYPE_ID ?? field?.userTypeId ?? '';
+  return EMBED_TYPES.includes(typeId);
+}
+
+function openConfigure(field) {
+  configureField.value = field;
+  showConfigureModal.value = true;
+}
 
 function handleFieldCreated() {
   showCreateModal.value = false;
+  emit('created');
+}
+
+function handleConfigureSaved() {
+  showConfigureModal.value = false;
+  configureField.value = null;
   emit('created');
 }
 </script>
@@ -209,5 +258,20 @@ function handleFieldCreated() {
   background: #f1f5f9;
   padding: 2px 6px;
   border-radius: 4px;
+}
+
+.user-fields-table__configure {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--b24-primary);
+  background: transparent;
+  color: var(--b24-primary);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.user-fields-table__configure:hover {
+  background: var(--b24-primary);
+  color: white;
 }
 </style>

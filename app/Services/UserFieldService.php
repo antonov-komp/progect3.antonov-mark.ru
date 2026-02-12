@@ -17,6 +17,7 @@
 class UserFieldService
 {
     private Bitrix24Client $bitrixClient;
+    private UserFieldTypeService $userFieldTypeService;
     private AppLogger $logger;
     private AccessContextService $accessContext;
 
@@ -25,10 +26,12 @@ class UserFieldService
 
     public function __construct(
         Bitrix24Client $bitrixClient,
+        UserFieldTypeService $userFieldTypeService,
         AppLogger $logger,
         AccessContextService $accessContext
     ) {
         $this->bitrixClient = $bitrixClient;
+        $this->userFieldTypeService = $userFieldTypeService;
         $this->logger = $logger;
         $this->accessContext = $accessContext;
     }
@@ -490,6 +493,107 @@ class UserFieldService
         ];
 
         return $config;
+    }
+
+    /**
+     * Создание поля-встройки (кастомный userfieldtype с handler iframe).
+     *
+     * 1. Регистрирует тип через userfieldtype.add (или update при дублировании)
+     * 2. Создаёт поле в CRM через crm.*.userfield.add
+     *
+     * @param string   $section     deal|lead|contact|company|smart
+     * @param array<string, string> $params handler_url, user_type_id, label, field_name?, description?, entity_type_id?, type_id?
+     * @return int|false ID созданного поля или false
+     */
+    public function addEmbedField(string $section, array $params): int|false
+    {
+        $this->lastErrorMessage = '';
+
+        if (!in_array($section, ['deal', 'lead', 'contact', 'company', 'smart'], true)) {
+            $this->lastErrorMessage = 'Раздел должен быть deal, lead, contact, company или smart.';
+            return false;
+        }
+        if ($section === 'smart') {
+            $spaId = trim((string) ($params['type_id'] ?? $params['entity_type_id'] ?? ''));
+            if ($spaId === '') {
+                $this->lastErrorMessage = 'Для смарт-процесса укажите entityTypeId или typeId.';
+                return false;
+            }
+        }
+
+        $handlerUrl = trim((string) ($params['handler_url'] ?? ''));
+        $userTypeId = trim((string) ($params['user_type_id'] ?? ''));
+        $label = trim((string) ($params['label'] ?? ''));
+        $fieldName = trim((string) ($params['field_name'] ?? ''));
+        $description = trim((string) ($params['description'] ?? ''));
+
+        if ($handlerUrl === '') {
+            $this->lastErrorMessage = 'Укажите URL handler\'а.';
+            return false;
+        }
+        if ($userTypeId === '') {
+            $this->lastErrorMessage = 'Укажите код типа поля (user_type_id).';
+            return false;
+        }
+        if ($label === '') {
+            $this->lastErrorMessage = 'Укажите название поля.';
+            return false;
+        }
+
+        $ok = $this->userFieldTypeService->registerUserFieldType(
+            $userTypeId,
+            $handlerUrl,
+            $label,
+            $description,
+        );
+
+        if (!$ok) {
+            $this->lastErrorMessage = $this->userFieldTypeService->getLastError();
+            if ($this->lastErrorMessage === '') {
+                $this->lastErrorMessage = 'Не удалось зарегистрировать тип поля.';
+            }
+            return false;
+        }
+
+        $fields = [
+            'USER_TYPE_ID' => $userTypeId,
+            'EDIT_FORM_LABEL' => $label,
+            'MANDATORY' => 'N',
+            'MULTIPLE' => 'N',
+            'SHOW_IN_LIST' => 'N',
+            'SHOW_FILTER' => 'N',
+            'SORT' => 100,
+        ];
+        if ($fieldName !== '') {
+            $fields['FIELD_NAME'] = $fieldName;
+        }
+
+        $fieldId = false;
+        switch ($section) {
+            case 'deal':
+                $fieldId = $this->addDealUserField($fields);
+                break;
+            case 'lead':
+                $fieldId = $this->addLeadUserField($fields);
+                break;
+            case 'contact':
+                $fieldId = $this->addContactUserField($fields);
+                break;
+            case 'company':
+                $fieldId = $this->addCompanyUserField($fields);
+                break;
+            case 'smart':
+                $spaId = trim((string) ($params['type_id'] ?? $params['entity_type_id'] ?? ''));
+                $fieldId = $this->addSmartProcessUserField($spaId, $fields);
+                break;
+        }
+
+        if ($fieldId === false) {
+            $apiErr = $this->getLastError();
+            $this->lastErrorMessage = $apiErr !== '' ? $apiErr : 'Не удалось создать поле в CRM.';
+        }
+
+        return $fieldId;
     }
 
     /**

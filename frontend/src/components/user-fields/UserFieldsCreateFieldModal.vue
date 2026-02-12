@@ -19,6 +19,21 @@
             {{ errorMessage }}
           </div>
 
+          <div v-if="showEmbedOption" class="create-field-modal__field create-field-modal__mode-switch">
+            <span class="create-field-modal__label">Режим:</span>
+            <div class="create-field-modal__radio-group">
+              <label class="create-field-modal__radio">
+                <input v-model="fieldMode" type="radio" value="standard" />
+                Обычное поле
+              </label>
+              <label class="create-field-modal__radio">
+                <input v-model="fieldMode" type="radio" value="embed" />
+                Поле-встройка (iframe)
+              </label>
+            </div>
+          </div>
+
+          <template v-if="fieldMode === 'standard'">
           <div class="create-field-modal__field">
             <label for="edit-form-label" class="create-field-modal__label">
               Название поля <span class="required">*</span>
@@ -103,6 +118,93 @@
               class="create-field-modal__input"
             />
           </div>
+          </template>
+
+          <template v-else>
+          <div class="create-field-modal__field">
+            <label for="embed-type" class="create-field-modal__label">
+              Тип встройки <span class="required">*</span>
+            </label>
+            <select
+              id="embed-type"
+              v-model="embedForm.embed_type_id"
+              class="create-field-modal__input create-field-modal__select"
+            >
+              <option value="">Выберите тип</option>
+              <option
+                v-for="et in embedTypes"
+                :key="et.id"
+                :value="et.id"
+              >
+                {{ et.title }}
+              </option>
+              <option :value="EMBED_TYPE_CUSTOM">Свой handler</option>
+            </select>
+          </div>
+          <div v-if="isEmbedCustom" class="create-field-modal__field">
+            <label for="embed-handler-url" class="create-field-modal__label">
+              URL handler'а <span class="required">*</span>
+            </label>
+            <input
+              id="embed-handler-url"
+              v-model="embedForm.handler_url"
+              type="url"
+              class="create-field-modal__input"
+              placeholder="https://example.com/handler.php"
+            />
+          </div>
+          <div v-if="isEmbedCustom" class="create-field-modal__field">
+            <label for="embed-user-type-id" class="create-field-modal__label">
+              Код типа поля (USER_TYPE_ID) <span class="required">*</span>
+            </label>
+            <input
+              id="embed-user-type-id"
+              v-model="embedForm.user_type_id"
+              type="text"
+              class="create-field-modal__input"
+              placeholder="my_buttons_view"
+              maxlength="50"
+            />
+            <span class="create-field-modal__hint">Только a-z, 0-9, _. Макс. 50 символов</span>
+          </div>
+          <div class="create-field-modal__field">
+            <label for="embed-label" class="create-field-modal__label">
+              Название поля <span class="required">*</span>
+            </label>
+            <input
+              id="embed-label"
+              v-model="embedForm.label"
+              type="text"
+              class="create-field-modal__input"
+              :placeholder="isEmbedCustom ? 'Мои кнопки' : 'Поле с кнопками'"
+            />
+          </div>
+          <div class="create-field-modal__field">
+            <label for="embed-description" class="create-field-modal__label">
+              Описание типа
+            </label>
+            <input
+              id="embed-description"
+              v-model="embedForm.description"
+              type="text"
+              class="create-field-modal__input"
+              placeholder="Описание (опционально)"
+            />
+          </div>
+          <div class="create-field-modal__field">
+            <label for="embed-field-name" class="create-field-modal__label">
+              Код поля
+            </label>
+            <input
+              id="embed-field-name"
+              v-model="embedForm.field_name"
+              type="text"
+              class="create-field-modal__input"
+              placeholder="Авто (оставьте пустым)"
+              maxlength="20"
+            />
+          </div>
+          </template>
 
           <div class="create-field-modal__actions">
             <button
@@ -127,8 +229,10 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
-import { createUserField } from '@/services/userFieldsService';
+import { ref, computed, watch } from 'vue';
+import { createUserField, createEmbedField } from '@/services/userFieldsService';
+
+const EMBED_TYPE_CUSTOM = 'custom';
 
 const props = defineProps({
   visible: {
@@ -147,10 +251,15 @@ const props = defineProps({
     type: String,
     default: null,
   },
+  embedTypes: {
+    type: Array,
+    default: () => [],
+  },
 });
 
 const emit = defineEmits(['created', 'cancel']);
 
+const fieldMode = ref('standard');
 const form = ref({
   EDIT_FORM_LABEL: '',
   FIELD_NAME: '',
@@ -161,39 +270,92 @@ const form = ref({
   SHOW_FILTER: 'N',
   SORT: 100,
 });
+const embedForm = ref({
+  embed_type_id: '',
+  handler_url: '',
+  user_type_id: '',
+  label: '',
+  description: '',
+  field_name: '',
+});
 
 const submitting = ref(false);
 const errorMessage = ref('');
 
+const showEmbedOption = computed(
+  () =>
+    props.section === 'smart' ||
+    ['deal', 'lead', 'contact', 'company'].includes(String(props.section || '')) ||
+    !!props.entityTypeId,
+);
+
+const isEmbedCustom = computed(() => embedForm.value.embed_type_id === EMBED_TYPE_CUSTOM);
+
 const FIELD_NAME_REGEX = /^[A-Za-z0-9_]+$/;
+const USER_TYPE_ID_REGEX = /^[a-z0-9_]{1,50}$/;
 
-function validate() {
-  errorMessage.value = '';
-
+function validateStandard() {
   const label = String(form.value.EDIT_FORM_LABEL || '').trim();
   if (!label) {
     errorMessage.value = 'Укажите название поля.';
     return false;
   }
-
   const code = String(form.value.FIELD_NAME || '').trim();
   if (code !== '' && !FIELD_NAME_REGEX.test(code)) {
     errorMessage.value = 'Код поля может содержать только буквы A-Z, цифры 0-9 и символ _';
     return false;
   }
-
   if (code !== '' && code.length > 20) {
     errorMessage.value = 'Код поля не более 20 символов.';
     return false;
   }
-
   const sort = Number(form.value.SORT);
   if (sort < 1 || !Number.isInteger(sort)) {
     errorMessage.value = 'Сортировка должна быть целым числом больше 0.';
     return false;
   }
-
   return true;
+}
+
+function validateEmbed() {
+  const embedTypeId = String(embedForm.value.embed_type_id || '').trim();
+  if (!embedTypeId) {
+    errorMessage.value = 'Выберите тип встройки.';
+    return false;
+  }
+  const label = String(embedForm.value.label || '').trim();
+  if (!label) {
+    errorMessage.value = 'Укажите название поля.';
+    return false;
+  }
+  if (embedTypeId === EMBED_TYPE_CUSTOM) {
+    const handlerUrl = String(embedForm.value.handler_url || '').trim();
+    if (!handlerUrl) {
+      errorMessage.value = 'Укажите URL handler\'а.';
+      return false;
+    }
+    try {
+      new URL(handlerUrl);
+    } catch {
+      errorMessage.value = 'Некорректный формат URL.';
+      return false;
+    }
+    const userTypeId = String(embedForm.value.user_type_id || '').trim();
+    if (!userTypeId) {
+      errorMessage.value = 'Укажите код типа поля (USER_TYPE_ID).';
+      return false;
+    }
+    if (!USER_TYPE_ID_REGEX.test(userTypeId)) {
+      errorMessage.value = 'Код типа поля: только a-z, 0-9, _, макс. 50 символов.';
+      return false;
+    }
+  }
+  return true;
+}
+
+function validate() {
+  errorMessage.value = '';
+  return fieldMode.value === 'embed' ? validateEmbed() : validateStandard();
 }
 
 function resetForm() {
@@ -207,6 +369,15 @@ function resetForm() {
     SHOW_FILTER: 'N',
     SORT: 100,
   };
+  embedForm.value = {
+    embed_type_id: '',
+    handler_url: '',
+    user_type_id: '',
+    label: '',
+    description: '',
+    field_name: '',
+  };
+  fieldMode.value = 'standard';
   errorMessage.value = '';
 }
 
@@ -224,27 +395,45 @@ async function handleSubmit() {
   submitting.value = true;
   errorMessage.value = '';
 
-  const fields = {
-    USER_TYPE_ID: form.value.USER_TYPE_ID,
-    EDIT_FORM_LABEL: String(form.value.EDIT_FORM_LABEL || '').trim(),
-    MANDATORY: form.value.MANDATORY,
-    MULTIPLE: form.value.MULTIPLE,
-    SHOW_IN_LIST: form.value.SHOW_IN_LIST,
-    SHOW_FILTER: form.value.SHOW_FILTER,
-    SORT: Math.max(1, Number(form.value.SORT) || 100),
-  };
-
-  if (form.value.FIELD_NAME && String(form.value.FIELD_NAME).trim() !== '') {
-    fields.FIELD_NAME = String(form.value.FIELD_NAME).trim();
-  }
-
   try {
-    await createUserField(
-      props.section,
-      fields,
-      props.entityTypeId || null,
-      props.typeId || null,
-    );
+    if (fieldMode.value === 'embed') {
+      const payload = {
+        label: String(embedForm.value.label || '').trim(),
+        description: String(embedForm.value.description || '').trim(),
+        field_name: String(embedForm.value.field_name || '').trim() || undefined,
+      };
+      if (embedForm.value.embed_type_id === EMBED_TYPE_CUSTOM) {
+        payload.handler_url = String(embedForm.value.handler_url || '').trim();
+        payload.user_type_id = String(embedForm.value.user_type_id || '').trim();
+      } else {
+        payload.embed_type_id = String(embedForm.value.embed_type_id || '').trim();
+      }
+      const embedPayload = { ...payload };
+      if (props.section === 'smart') {
+        embedPayload.entityTypeId = props.entityTypeId ?? null;
+        embedPayload.typeId = props.typeId ?? null;
+      }
+      await createEmbedField(props.section, embedPayload);
+    } else {
+      const fields = {
+        USER_TYPE_ID: form.value.USER_TYPE_ID,
+        EDIT_FORM_LABEL: String(form.value.EDIT_FORM_LABEL || '').trim(),
+        MANDATORY: form.value.MANDATORY,
+        MULTIPLE: form.value.MULTIPLE,
+        SHOW_IN_LIST: form.value.SHOW_IN_LIST,
+        SHOW_FILTER: form.value.SHOW_FILTER,
+        SORT: Math.max(1, Number(form.value.SORT) || 100),
+      };
+      if (form.value.FIELD_NAME && String(form.value.FIELD_NAME).trim() !== '') {
+        fields.FIELD_NAME = String(form.value.FIELD_NAME).trim();
+      }
+      await createUserField(
+        props.section,
+        fields,
+        props.entityTypeId || null,
+        props.typeId || null,
+      );
+    }
     resetForm();
     emit('created');
   } catch (err) {
@@ -356,6 +545,39 @@ watch(
 
 .create-field-modal__select {
   cursor: pointer;
+}
+
+.create-field-modal__mode-switch {
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--b24-border);
+}
+
+.create-field-modal__radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.create-field-modal__radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.create-field-modal__radio input {
+  width: 18px;
+  height: 18px;
+}
+
+.create-field-modal__hint {
+  display: block;
+  font-size: 12px;
+  color: var(--b24-text-muted);
+  margin-top: 4px;
 }
 
 .create-field-modal__row {
