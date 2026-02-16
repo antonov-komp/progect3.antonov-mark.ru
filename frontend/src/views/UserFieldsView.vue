@@ -91,7 +91,6 @@ const sectionTitle = computed(() => currentSectionTitle.value);
 
 async function handleFieldCreated() {
   notifySuccess('Поле создано');
-  const controller = new AbortController();
   await loadFields();
 }
 
@@ -118,14 +117,14 @@ async function loadFields() {
 
 function goToSection(item) {
   if (item.id === 'smart' && (item.entityTypeId || item.typeId)) {
-    const query = {};
-    if (item.typeId != null && item.typeId !== '') {
-      query.typeId = item.typeId;
-    }
+    // typeId (id из crm.type.list) приоритетен для userfieldconfig — ENTITY_ID = CRM_{typeId}
+    const typeId = item.typeId != null && item.typeId !== '' ? String(item.typeId) : '';
+    const entityTypeId = item.entityTypeId != null && item.entityTypeId !== '' ? String(item.entityTypeId) : typeId;
+    const query = typeId ? { typeId } : {};
     router.push({
       name: 'user-fields-smart',
       params: {
-        entityTypeId: item.entityTypeId || item.typeId,
+        entityTypeId: typeId || entityTypeId,
       },
       query,
     });

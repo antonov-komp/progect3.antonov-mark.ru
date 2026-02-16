@@ -57,9 +57,10 @@ class EmbedFieldSettingsService
 
     /**
      * @param array<string, mixed> $settings
-     * @param string|null $entityIdOverride Для section=smart — явный entityId (CRM_123) для by_field
+     * @param string|null $fieldName
+     * @param array<int, string>|string|null $entityIdOverride Для section=smart — массив entityId (CRM_123, DYNAMIC_123) для by_field
      */
-    public function save(string $section, int $fieldId, array $settings, ?string $fieldName = null, ?string $entityIdOverride = null): bool
+    public function save(string $section, int $fieldId, array $settings, ?string $fieldName = null, array|string|null $entityIdOverride = null): bool
     {
         $dir = self::getSettingsDir();
         if (!is_dir($dir)) {

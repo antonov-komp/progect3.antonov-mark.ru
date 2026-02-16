@@ -130,7 +130,15 @@ export async function createUserField(
     signal,
   });
 
-  const data = await parseJsonResponse(response);
+  const data = await parseJsonResponse(response).catch(() => ({}));
+
+  if (!response.ok) {
+    const msg = data?.error_message || `HTTP ${response.status}`;
+    const err = new Error(msg);
+    err.response = data;
+    err.status = response.status;
+    throw err;
+  }
 
   if (data.status === 'error') {
     const err = new Error(data.error_message || 'Ошибка создания поля');
@@ -183,7 +191,15 @@ export async function createEmbedField(section, params, signal) {
     signal,
   });
 
-  const data = await parseJsonResponse(response);
+  const data = await parseJsonResponse(response).catch(() => ({}));
+
+  if (!response.ok) {
+    const msg = data?.error_message || `HTTP ${response.status}`;
+    const err = new Error(msg);
+    err.response = data;
+    err.status = response.status;
+    throw err;
+  }
 
   if (data.status === 'error') {
     const err = new Error(data.error_message || 'Ошибка создания поля-встройки');

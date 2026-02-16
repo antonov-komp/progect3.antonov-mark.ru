@@ -48,7 +48,9 @@ class JsonResponseService
     public function logError(string $message): void
     {
         if (function_exists('AddMessage2Log')) {
-            AddMessage2Log($message, $this->logTag);
+            /** @var callable $addMessage2Log */
+            $addMessage2Log = 'AddMessage2Log';
+            $addMessage2Log($message, $this->logTag);
             return;
         }
 

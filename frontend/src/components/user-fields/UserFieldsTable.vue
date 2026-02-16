@@ -139,9 +139,9 @@ const showConfigureModal = ref(false);
 const configureField = ref(null);
 
 function isEmbedField(field) {
-  if (!['deal', 'lead', 'contact', 'company'].includes(props.section)) return false;
   const typeId = field?.USER_TYPE_ID ?? field?.userTypeId ?? '';
-  return EMBED_TYPES.includes(typeId);
+  if (!EMBED_TYPES.includes(typeId)) return false;
+  return ['deal', 'lead', 'contact', 'company', 'smart'].includes(props.section);
 }
 
 function openConfigure(field) {

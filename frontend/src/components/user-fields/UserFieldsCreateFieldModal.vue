@@ -103,6 +103,10 @@
               Показывать в списке
             </label>
             <label class="create-field-modal__checkbox">
+              <input v-model="form.EDIT_IN_LIST" type="checkbox" true-value="Y" false-value="N" />
+              Редактировать в списке
+            </label>
+            <label class="create-field-modal__checkbox">
               <input v-model="form.SHOW_FILTER" type="checkbox" true-value="Y" false-value="N" />
               Показывать в фильтре
             </label>
@@ -267,6 +271,7 @@ const form = ref({
   MANDATORY: 'N',
   MULTIPLE: 'N',
   SHOW_IN_LIST: 'N',
+  EDIT_IN_LIST: 'Y',
   SHOW_FILTER: 'N',
   SORT: 100,
 });
@@ -366,6 +371,7 @@ function resetForm() {
     MANDATORY: 'N',
     MULTIPLE: 'N',
     SHOW_IN_LIST: 'N',
+    EDIT_IN_LIST: 'Y',
     SHOW_FILTER: 'N',
     SORT: 100,
   };
@@ -410,8 +416,15 @@ async function handleSubmit() {
       }
       const embedPayload = { ...payload };
       if (props.section === 'smart') {
-        embedPayload.entityTypeId = props.entityTypeId ?? null;
-        embedPayload.typeId = props.typeId ?? null;
+        const eid = props.entityTypeId != null && props.entityTypeId !== '' ? String(props.entityTypeId) : null;
+        const tid = props.typeId != null && props.typeId !== '' ? String(props.typeId) : null;
+        if (tid) embedPayload.typeId = tid;
+        if (eid) embedPayload.entityTypeId = eid;
+        if (!tid && !eid) {
+          errorMessage.value = 'Для смарт-процесса не указан typeId или entityTypeId. Выберите раздел заново.';
+          submitting.value = false;
+          return;
+        }
       }
       await createEmbedField(props.section, embedPayload);
     } else {
@@ -421,6 +434,7 @@ async function handleSubmit() {
         MANDATORY: form.value.MANDATORY,
         MULTIPLE: form.value.MULTIPLE,
         SHOW_IN_LIST: form.value.SHOW_IN_LIST,
+        EDIT_IN_LIST: form.value.EDIT_IN_LIST,
         SHOW_FILTER: form.value.SHOW_FILTER,
         SORT: Math.max(1, Number(form.value.SORT) || 100),
       };
